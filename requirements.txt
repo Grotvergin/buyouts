@@ -1,0 +1,5 @@
+colorama==0.4.3
+pyTelegramBotAPI==4.19.1
+google_api_python_client==2.133.0
+httplib2==0.22.0
+protobuf==5.27.1

@@ -1,0 +1,6 @@
+secret.py
+.idea
+venv
+__pycache__
+test.py
+*.json
