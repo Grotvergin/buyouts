@@ -4,9 +4,9 @@ from source import *
 def AuthorizeDatabase():
     conn = connect(
         dbname="buyouts",
-        user="postgres",
+        user="test",
         password=PASSWORD,
-        host="localhost",
+        host="185.219.82.218",
         port="5432"
     )
     cursor = conn.cursor()

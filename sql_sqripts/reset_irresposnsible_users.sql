@@ -14,5 +14,3 @@ BEGIN
         END LOOP;
 END;
 $$ LANGUAGE plpgsql;
-
--- sudo apt-get install postgresql-cron

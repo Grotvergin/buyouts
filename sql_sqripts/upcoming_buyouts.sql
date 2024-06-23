@@ -3,4 +3,4 @@ SELECT *
 FROM buyouts
 WHERE date_plan >= CURRENT_TIMESTAMP AT TIME ZONE 'MSK'
   AND date_plan < CURRENT_TIMESTAMP AT TIME ZONE 'MSK' + INTERVAL '1 hour'
-  AND user_id IS NULL
+  AND user_id IS NULL;

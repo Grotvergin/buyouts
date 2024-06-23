@@ -8,8 +8,6 @@ CREATE TABLE Streets
     name VARCHAR(40) PRIMARY KEY
 );
 
-DELETE FROM Users WHERE id = 386988582
-
 CREATE TABLE Users
 (
     id         NUMERIC(11) PRIMARY KEY,
@@ -38,6 +36,8 @@ CREATE TABLE Customers
     name       VARCHAR(70),
     legal_name VARCHAR(50)
 );
+
+INSERT INTO Plans (good_link, quantity, start_date, end_date, type, request, customer_inn)
 
 CREATE TABLE Plans
 (
