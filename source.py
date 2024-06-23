@@ -4,7 +4,7 @@ from telebot import TeleBot
 from telebot.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from datetime import datetime
 from traceback import format_exc
-import psycopg2
+from psycopg2 import connect
 from re import match
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
@@ -19,6 +19,7 @@ from os import remove
 
 BOT = TeleBot(TOKEN)
 USER_STATES = {}
+STATES = ('sex', 'name', 'num_digits', 'city', 'video')
 STATE_START = 0
 STATE_WAITING_FOR_SEX = 1
 STATE_WAITING_FOR_NAME = 2
@@ -27,7 +28,7 @@ STATE_WAITING_FOR_CITY = 4
 STATE_WAITING_FOR_VIDEO = 5
 SEX_BTNS = ('М 🤵‍♂️', 'Ж 👱‍♀️')
 CREDS = Credentials.from_service_account_file('keys.json', scopes=['https://www.googleapis.com/auth/drive.file'])
-SLEEP_GOOGLE = 20
+LONG_SLEEP = 20
 
 
 def BuildService() -> Resource:
@@ -36,7 +37,7 @@ def BuildService() -> Resource:
         service = build('drive', 'v3', credentials=CREDS)
     except (HttpError, TimeoutError, ServerNotFoundError, gaierror, SSLEOFError) as err:
         Stamp(f'Status = {err} on building service', 'e')
-        Sleep(SLEEP_GOOGLE)
+        Sleep(LONG_SLEEP)
         BuildService()
     else:
         Stamp('Built service successfully', 's')
