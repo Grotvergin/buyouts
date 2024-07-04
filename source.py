@@ -27,6 +27,7 @@ STATE_WAITING_FOR_NUM_DIGITS = 3
 STATE_WAITING_FOR_CITY = 4
 STATE_WAITING_FOR_VIDEO = 5
 SEX_BTNS = ('М 🤵‍♂️', 'Ж 👱‍♀️')
+MENU_BTNS = ('Регистрация 📝', 'Доступные выкупы 🎁', 'Мои выкупы 🎁', 'Помощь 🆘')
 CREDS = Credentials.from_service_account_file('keys.json', scopes=['https://www.googleapis.com/auth/drive.file'])
 LONG_SLEEP = 20
 

@@ -22,14 +22,6 @@ def Main():
             Stamp(format_exc(), 'e')
 
 
-@BOT.message_handler(commands=['start'])
-def Start(message: Message) -> None:
-    Stamp(f'User {message.from_user.id} started bot', 'i')
-    USER_STATES[message.from_user.id] = STATES[0]
-    ShowButtons(message, SEX_BTNS, f'👋 Привет, {message.from_user.first_name}! '
-                                   f'<Текст от Паши>.\nПожалуйста, укажите ваш пол:')
-
-
 @BOT.message_handler(func=lambda message: USER_STATES.get(message.from_user.id) == STATES[0])
 def AcceptSex(message: Message) -> None:
     Stamp(f'User {message.from_user.id} choosing sex', 'i')
@@ -108,6 +100,86 @@ def HandleVideoLink(message: Message) -> None:
         Stamp(f'Error while uploading a file: {str(e)}', 'e')
     del USER_STATES[message.from_user.id]
     BOT.send_message(message.from_user.id, '✅ Спасибо, регистрация завершена!')
+
+
+def ShowBuyouts(user_id: int = None) -> str | None:
+    query = """
+    SELECT 
+        b.id,
+        b.date_plan,
+        b.date_fact,
+        b.date_pick_up,
+        b.date_shipment,
+        b.photo_hist_link,
+        b.photo_good_link,
+        b.date_delivery,
+        b.feedback,
+        b.price
+    FROM 
+        buyouts AS b
+    """
+
+    if user_id:
+        query += "WHERE b.user_id = %s"
+        CUR.execute(query, (user_id,))
+    else:
+        query += "WHERE b.user_id IS NULL"
+        CUR.execute(query)
+
+    buyouts = CUR.fetchall()
+
+    if not buyouts:
+        return "Нет данных о выкупах."
+
+    info = []
+    for buyout in buyouts:
+        info.append(
+            f"🎁 Выкуп #{buyout[0]}\n"
+            f"📅 Планируемая дата: {buyout[1]}\n"
+            f"📅 Фактическая дата: {buyout[2]}\n"
+            f"📅 Дата получения: {buyout[3]}\n"
+            f"📅 Дата отгрузки: {buyout[4]}\n"
+            f"🖼️ Фото истории: {buyout[5]}\n"
+            f"🖼️ Фото товара: {buyout[6]}\n"
+            f"📅 Дата доставки: {buyout[7]}\n"
+            f"💬 Отзыв: {buyout[8]}\n"
+            f"💵 Цена: {buyout[9]} рублей\n"
+            "---------------------------------\n"
+        )
+
+    return ''.join(info)
+
+
+@BOT.message_handler(content_types=['text'])
+def Start(message: Message) -> None:
+    Stamp(f'User {message.from_user.id} requested {message.text}', 'i')
+    if message.text == MENU_BTNS[0]:
+        Stamp(f'User {message.from_user.id} started registration', 'i')
+        USER_STATES[message.from_user.id] = STATES[0]
+        ShowButtons(message, SEX_BTNS, f'👋 Привет, {message.from_user.first_name}! '
+                                   f'\nПожалуйста, укажите ваш пол:')
+    elif message.text == MENU_BTNS[1]:
+        buyouts = ShowBuyouts()
+        if not buyouts:
+            BOT.send_message(message.from_user.id, '❌ На данный момент нет доступных выкупов!')
+        else:
+            BOT.send_message(message.from_user.id, buyouts)
+        ShowButtons(message, MENU_BTNS, '📚 Выберите действие:')
+    elif message.text == MENU_BTNS[2]:
+        buyouts = ShowBuyouts(message.from_user.id)
+        if not buyouts:
+            BOT.send_message(message.from_user.id, '❌ Вы еще не участвовали в выкупах!')
+        else:
+            BOT.send_message(message.from_user.id, buyouts)
+        ShowButtons(message, MENU_BTNS, '📚 Выберите действие:')
+    elif message.text == MENU_BTNS[3]:
+        BOT.send_message(message.from_user.id, '📚 Помощь по боту:\n'
+                                               '1. Для начала регистрации нажмите "Регистрация 📝"\n'
+                                               '2. Для просмотра доступных выкупов нажмите "Доступные выкупы 🎁"\n'
+                                               '3. Для просмотра ваших выкупов нажмите "Мои выкупы 🎁"')
+    else:
+        BOT.send_message(message.from_user.id, '❌ Неизвестная команда!')
+        ShowButtons(message, MENU_BTNS, '📚 Выберите действие:')
 
 
 if __name__ == '__main__':
