@@ -3,8 +3,7 @@ RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.quantity IS NOT NULL THEN
         FOR i IN 1..NEW.quantity LOOP
-            INSERT INTO buyouts (plan)
-            VALUES (NEW.id);
+            INSERT INTO buyouts (plan) VALUES (NEW.id);
         END LOOP;
     END IF;
     RETURN NEW;
