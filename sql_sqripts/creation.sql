@@ -58,7 +58,6 @@ CREATE TABLE Buyouts
     date_fact       TIMESTAMP CHECK (date_fact >= date_plan),
     date_delivery   TIMESTAMP CHECK (date_delivery >= date_fact),
     date_pick_up    TIMESTAMP CHECK (date_pick_up >= date_delivery),
-    date_shipment   TIMESTAMP CHECK (date_shipment >= date_pick_up),
     photo_hist_link VARCHAR(100) CHECK (photo_hist_link LIKE 'https://drive.google.com/file/d/%'),
     photo_good_link VARCHAR(100) CHECK (photo_good_link LIKE 'https://drive.google.com/file/d/%'),
     feedback        VARCHAR(250),

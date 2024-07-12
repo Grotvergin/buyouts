@@ -17,6 +17,16 @@ from time import sleep
 from random import randint
 from os import remove
 
+# Ошибка с файлом
+# Формат времени
+# Убрать qr код ссылку
+# Адрес сделать в момент заказа
+# Пока что убрать выкуп для себя
+# Подтягивать цену с вб в момент покупки
+# Обновление qr кодов при доставке/с утра
+# Уведомление (обновите куар, появился новый выкуп)
+
+
 BOT = TeleBot(TOKEN)
 USER_STATES = {}
 STATES = ('sex', 'name', 'num_digits', 'city', 'video')
@@ -27,12 +37,20 @@ STATE_WAITING_FOR_NUM_DIGITS = 3
 STATE_WAITING_FOR_CITY = 4
 STATE_WAITING_FOR_VIDEO = 5
 SEX_BTNS = ('М 🤵‍♂️', 'Ж 👱‍♀️')
-MENU_BTNS = ('Доступные выкупы 🎁', 'Мои выкупы 🎁')
+MENU_BTNS = ('Доступные 💭', 'Избранные ✔️', 'Заказанные 🛒', 'Приехавшие 🚚', 'Забранные 📤', 'Все мои выкупы 🗂', '️️Мои данные ℹ️')
 CREDS = Credentials.from_service_account_file('keys.json', scopes=['https://www.googleapis.com/auth/drive.file'])
 LONG_SLEEP = 20
 MAX_LEN_NAME = 20
 AWARD_BUYOUT = 80
 AWARD_FEEDBACK = 50
+TYPAGES = {'return': 'с возвратом', 'save': 'оставить себе'}
+STATUSES_AND_BTNS = {'🔴 Не распределён': ('Беру!', 'choose_'),
+                     '🟠 В избранном': ('Заказал!', 'order_'),
+                     '🟡 Выкуплен': ('Приехал!', 'arrive_'),
+                     '🟢 Доставлен': ('Забрал!', 'pickup_'),
+                     '🔵 Забран': ('Оценить!', 'feedback_')}
+STATUSES = tuple(STATUSES_AND_BTNS.keys())
+CALLBACKS = tuple([btn[1] for btn in STATUSES_AND_BTNS.values()])
 
 
 def BuildService() -> Resource:

@@ -95,76 +95,93 @@ def HandleVideoLink(message: Message) -> None:
         Stamp(f'Error while uploading a file: {str(e)}', 'e')
     del USER_STATES[message.from_user.id]
     BOT.send_message(message.from_user.id, '✅ Спасибо, регистрация завершена!')
-    ShowButtons(message, MENU_BTNS, '📚 Выберите действие:')
+    ShowButtons(message, MENU_BTNS, '❔ Выберите действие:')
 
 
-def PrepareAvailableBuyouts() -> dict | None:
-    CUR.execute('SELECT * FROM upcoming_buyouts')
+def PrepareBuyouts(user_id: int = None) -> dict | None:
+    if user_id:
+        CUR.execute('SELECT * FROM fetch_buyouts_for_user(%s)', (user_id,))
+    else:
+        CUR.execute('SELECT * FROM upcoming_buyouts')
     buyouts = CUR.fetchall()
     if not buyouts:
         return
     info = {}
     for buyout in buyouts:
-        if buyout[3] == 'return':
-            typage = 'с возвратом'
-        else:
-            typage = 'оставить себе'
-        if buyout[1] is None:
-            reward = AWARD_BUYOUT
-        else:
-            reward = AWARD_FEEDBACK + AWARD_BUYOUT
-        info[buyout[5]] = f'🕘 Планируемое время: {buyout[0]}\n' \
-                          f'📃 Текст отзыва: {buyout[1]}\n' \
-                          f'🔗 Ссылка на товар: {buyout[2]}\n' \
-                          f'❗️ Тип: {typage}\n' \
-                          f'💰 Вознаграждение: {reward} руб.\n' \
-                          f'📄 Запрос: {buyout[4]}\n'
+        text = ''
+        status = STATUSES[0]
+        reward = AWARD_BUYOUT
+        if buyout[0]:
+            text += f'📍 ID ПВЗ (в будущем – адрес): {buyout[0]}\n'
+        if buyout[1]:
+            status = STATUSES[1]
+        if buyout[2]:
+            text += f'🕘 Планируемое время выкупа: {buyout[2]}\n'
+        if buyout[3]:
+            text += f'🏁 Фактическое время выкупа: {buyout[3]}\n'
+            status = STATUSES[2]
+        if buyout[4]:
+            text += f'🚛 Доставлен на ПВЗ: {buyout[4]}\n'
+            status = STATUSES[3]
+        if buyout[5]:
+            text += f'📤 Забран из ПВЗ: {buyout[5]}\n'
+            status = STATUSES[4]
+        if buyout[6]:
+            text += f'📝 Отзыв: {buyout[6]}\n'
+            reward += AWARD_FEEDBACK
+        if buyout[7]:
+            text += f'🔗 Ссылка: {buyout[7]}\n'
+        if buyout[8]:
+            text += f'🔸 Тип: {TYPAGES[buyout[8]]}\n'
+        if buyout[9]:
+            text += f'📄 Запрос: {buyout[9]}\n'
+        text += f'💰 Вознаграждение: {reward} ₽\n'
+        text += f'⚠️ Статус: {status}\n'
+        info[buyout[10]] = (text, status)
     return info
 
 
-def ShowMyBuyouts(user_id: int) -> None:
-    CUR.execute("""SELECT b.date_plan,
-                                    b.feedback,
-                                     p.good_link,
-                                     p.type,
-                                     p.request,
-                                     b.id
-                              FROM buyouts AS b
-                              JOIN plans AS p ON p.id = b.plan
-                              WHERE b.user_id = %s""", (user_id,))
-    buyouts = CUR.fetchall()
-    if not buyouts:
-        BOT.send_message(user_id, '❌ Вы еще не участвовали в выкупах!')
-        return
-    for buyout in buyouts:
-        if buyout[3] == 'return':
-            typage = 'с возвратом'
-        else:
-            typage = 'оставить себе'
-        if buyout[1] is None:
-            reward = AWARD_BUYOUT
-        else:
-            reward = AWARD_FEEDBACK + AWARD_BUYOUT
-        BOT.send_message(user_id, f'🕘 Планируемое время: {buyout[0]}\n'
-                                  f'📃 Текст отзыва: {buyout[1]}\n'
-                                  f'🔗 Ссылка на товар: {buyout[2]}\n'
-                                  f'❗️ Тип: {typage}\n'
-                                  f'💰 Вознаграждение: {reward} руб.\n'
-                                  f'📄 Запрос: {buyout[4]}\n\n')
-
-
-def SendAvailableBuyouts(user_id: int) -> None:
-    buyouts = PrepareAvailableBuyouts()
-    if not buyouts:
-        BOT.send_message(user_id, '❌ На данный момент нет доступных выкупов!')
+def SendBuyouts(user_id: int, status: str = None, all_statuses: bool = False) -> None:
+    sent_at_least_one = False
+    if status == STATUSES[0]:
+        buyouts = PrepareBuyouts()
     else:
+        buyouts = PrepareBuyouts(user_id)
+    if buyouts:
         for one in buyouts.keys():
-            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Беру!", callback_data=f"take_{one}")]])
-            BOT.send_message(user_id, buyouts[one], reply_markup=keyboard)
+            if buyouts[one][1] == status or all_statuses:
+                sent_at_least_one = True
+                btn_text, clbk_data = STATUSES_AND_BTNS[buyouts[one][1]]
+                keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(btn_text, callback_data=f"{clbk_data}{one}")]])
+                BOT.send_message(user_id, buyouts[one], reply_markup=keyboard)
+
+    if not sent_at_least_one:
+        if all_statuses:
+            BOT.send_message(user_id, f'❌ Нет никаких выкупов!')
+        else:
+            BOT.send_message(user_id, f'❌ Нет выкупов со статусом {status}!')
 
 
-@BOT.callback_query_handler(func=lambda call: call.data.startswith('take_'))
-def HandleTakeCallback(call: CallbackQuery) -> None:
+def ShowUserInfo(user_id: int) -> None:
+    CUR.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+    user = CUR.fetchone()
+    if not user:
+        BOT.send_message(user_id, '❌ Вы не зарегистрированы в системе!')
+        return
+    text = f'👤 Имя: {user[2]}\n' \
+           f'🚹 Пол: {"Мужской" if user[1] == "M" else "Женский"}\n' \
+           f'📞 Последние 4 цифры номера: {user[3]}\n' \
+           f'🏙 Город: {user[4]}\n' \
+           f'📹 Видео: {user[6]}\n' \
+           f'🆔 ID: {user[0]}\n' \
+           f'📅 Дата регистрации: {user[5]}\n' \
+           f'🆕 Дата обновления QR-кода: {user[7]}\n' \
+           f'🔳 QR-код: {user[8]}\n'
+    BOT.send_message(user_id, text)
+
+
+@BOT.callback_query_handler(func=lambda call: call.data.startswith(CALLBACKS[0]))
+def HandleChooseCallback(call: CallbackQuery) -> None:
     buyout_id = call.data.split('_')[1]
     try:
         CUR.execute("UPDATE buyouts SET user_id = %s WHERE id = %s", (call.from_user.id, buyout_id))
@@ -175,6 +192,53 @@ def HandleTakeCallback(call: CallbackQuery) -> None:
         Stamp(f'Error while handling take callback: {str(e)}', 'e')
 
 
+@BOT.callback_query_handler(func=lambda call: call.data.startswith(CALLBACKS[1]))
+def HandleOrderedCallback(call: CallbackQuery) -> None:
+    buyout_id = call.data.split('_')[1]
+    try:
+        CUR.execute("UPDATE buyouts SET date_fact = CURRENT_TIMESTAMP AT TIME ZONE 'MSK' WHERE id = %s", (buyout_id,))
+        CON.commit()
+        BOT.send_message(call.from_user.id, '✅ Четко, вижу заказал!')
+    except Exception as e:
+        BOT.send_message(call.from_user.id, '❌ Произошла ошибка при обновлении статуса!')
+        Stamp(f'Error while handling ordered callback: {str(e)}', 'e')
+
+
+@BOT.callback_query_handler(func=lambda call: call.data.startswith(CALLBACKS[2]))
+def HandleArrivedCallback(call: CallbackQuery) -> None:
+    buyout_id = call.data.split('_')[1]
+    try:
+        CUR.execute("UPDATE buyouts SET date_delivery = CURRENT_TIMESTAMP AT TIME ZONE 'MSK' WHERE id = %s", (buyout_id,))
+        CON.commit()
+        BOT.send_message(call.from_user.id, '✅ Четко, вижу приехал!')
+    except Exception as e:
+        BOT.send_message(call.from_user.id, '❌ Произошла ошибка при обновлении статуса!')
+        Stamp(f'Error while handling arrived callback: {str(e)}', 'e')
+
+
+@BOT.callback_query_handler(func=lambda call: call.data.startswith(CALLBACKS[3]))
+def HandlePickedUpCallback(call: CallbackQuery) -> None:
+    buyout_id = call.data.split('_')[1]
+    try:
+        CUR.execute("UPDATE buyouts SET date_pick_up = CURRENT_TIMESTAMP AT TIME ZONE 'MSK' WHERE id = %s", (buyout_id,))
+        CON.commit()
+        BOT.send_message(call.from_user.id, '✅ Четко, вижу забрал!')
+    except Exception as e:
+        BOT.send_message(call.from_user.id, '❌ Произошла ошибка при обновлении статуса!')
+        Stamp(f'Error while handling picked up callback: {str(e)}', 'e')
+
+
+@BOT.callback_query_handler(func=lambda call: call.data.startswith(CALLBACKS[4]))
+def HandleFeedbackCallback(call: CallbackQuery) -> None:
+    buyout_id = call.data.split('_')[1]
+    try:
+        CON.commit()
+        BOT.send_message(call.from_user.id, '✅ Четко, вижу оценил!')
+    except Exception as e:
+        BOT.send_message(call.from_user.id, '❌ Произошла ошибка при обновлении статуса!')
+        Stamp(f'Error while handling feedback callback: {str(e)}', 'e')
+
+
 @BOT.message_handler(content_types=['text'])
 def Start(message: Message) -> None:
     Stamp(f'User {message.from_user.id} requested {message.text}', 'i')
@@ -182,15 +246,24 @@ def Start(message: Message) -> None:
         USER_STATES[message.from_user.id] = STATES[0]
         ShowButtons(message, SEX_BTNS, f'👋 Привет, {message.from_user.first_name}! '
                                        f'\nПожалуйста, укажите ваш пол:')
-    elif message.text == MENU_BTNS[0]:
-        SendAvailableBuyouts(message.from_user.id)
-        ShowButtons(message, MENU_BTNS, '📚 Выберите действие:')
-    elif message.text == MENU_BTNS[1]:
-        ShowMyBuyouts(message.from_user.id)
-        ShowButtons(message, MENU_BTNS, '📚 Выберите действие:')
     else:
-        BOT.send_message(message.from_user.id, '❌ Неизвестная команда!')
-        ShowButtons(message, MENU_BTNS, '📚 Выберите действие:')
+        if message.text == MENU_BTNS[0]:
+            SendBuyouts(message.from_user.id, STATUSES[0])
+        elif message.text == MENU_BTNS[1]:
+            SendBuyouts(message.from_user.id, STATUSES[1])
+        elif message.text == MENU_BTNS[2]:
+            SendBuyouts(message.from_user.id, STATUSES[2])
+        elif message.text == MENU_BTNS[3]:
+            SendBuyouts(message.from_user.id, STATUSES[3])
+        elif message.text == MENU_BTNS[4]:
+            SendBuyouts(message.from_user.id, STATUSES[4])
+        elif message.text == MENU_BTNS[5]:
+            SendBuyouts(message.from_user.id, all_statuses=True)
+        elif message.text == MENU_BTNS[6]:
+            ShowUserInfo(message.from_user.id)
+        else:
+            BOT.send_message(message.from_user.id, '❌ Неизвестная команда!')
+        ShowButtons(message, MENU_BTNS, '❔ Выберите действие:')
 
 
 if __name__ == '__main__':
