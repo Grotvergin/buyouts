@@ -6,9 +6,9 @@ DECLARE
 BEGIN
     FOR row IN SELECT id, user_id, date_fact, date_plan FROM Buyouts WHERE user_id IS NOT NULL AND date_fact IS NULL
         LOOP
-            IF EXTRACT(EPOCH FROM (NOW() AT TIME ZONE 'MSK' - row.date_plan)) > 3600 THEN
+            IF EXTRACT(EPOCH FROM (NOW() - row.date_plan)) > 3600 THEN
                 UPDATE Buyouts
-                SET user_id = NULL, date_plan = NOW() AT TIME ZONE 'MSK' + INTERVAL '1 hour'
+                SET user_id = NULL, date_plan = NOW() + INTERVAL '1 hour'
                 WHERE id = row.id;
             END IF;
         END LOOP;

@@ -11,13 +11,14 @@ CREATE TABLE Streets
 CREATE TABLE Users
 (
     id         NUMERIC(11) PRIMARY KEY,
-    sex        CHAR(1) CHECK (sex IN ('M', 'F')) NOT NULL,
+    sex        CHAR(1) CHECK (sex IN ('M', 'F')),
     name       VARCHAR(20),
-    num_digits CHAR(4),
+    surname    VARCHAR(25),
+    phone      NUMERIC(11),
     city       VARCHAR(15) REFERENCES Cities (name),
-    reg_date   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    reg_time   TIMESTAMP,
     video_link VARCHAR(100) CHECK (video_link LIKE 'https://drive.google.com/file/d/%'),
-    qr_date    TIMESTAMP,
+    qr_time    TIMESTAMP,
     qr_link    VARCHAR(100) CHECK (qr_link LIKE 'https://drive.google.com/file/d/%')
 );
 
@@ -42,9 +43,8 @@ CREATE TABLE Plans
     id           SERIAL PRIMARY KEY,
     good_link    VARCHAR(100) CHECK (good_link LIKE 'https://www.wildberries.ru/catalog/%') NOT NULL,
     quantity     NUMERIC(4) CHECK (quantity > 0)                                            NOT NULL,
-    start_date   TIMESTAMP CHECK (start_date >= CURRENT_TIMESTAMP)                               NOT NULL,
-    end_date     TIMESTAMP CHECK (end_date >= start_date)                                   NOT NULL,
-    type         CHAR(6) CHECK (type IN ('return', 'save'))                                 NOT NULL,
+    start_time   TIMESTAMP CHECK (start_time >= NOW())                                      NOT NULL,
+    end_time     TIMESTAMP CHECK (end_time >= start_time)                                   NOT NULL,
     request      VARCHAR(50),
     customer_inn NUMERIC(10) REFERENCES customers (inn)                                     NOT NULL
 );
@@ -52,23 +52,15 @@ CREATE TABLE Plans
 CREATE TABLE Buyouts
 (
     id              SERIAL PRIMARY KEY,
-    pick_point      BIGINT REFERENCES Pick_Points (id),
+    pick_point_id      BIGINT REFERENCES Pick_Points (id),
     user_id         BIGINT REFERENCES Users (id),
-    date_plan       TIMESTAMP,
-    date_fact       TIMESTAMP CHECK (date_fact >= date_plan),
-    date_delivery   TIMESTAMP CHECK (date_delivery >= date_fact),
-    date_pick_up    TIMESTAMP CHECK (date_pick_up >= date_delivery),
+    plan_time       TIMESTAMP,
+    fact_time       TIMESTAMP CHECK (fact_time >= plan_time),
+    delivery_time   TIMESTAMP CHECK (delivery_time >= fact_time),
+    pick_up_time    TIMESTAMP CHECK (pick_up_time >= delivery_time),
     photo_hist_link VARCHAR(100) CHECK (photo_hist_link LIKE 'https://drive.google.com/file/d/%'),
     photo_good_link VARCHAR(100) CHECK (photo_good_link LIKE 'https://drive.google.com/file/d/%'),
     feedback        VARCHAR(250),
-    plan            BIGINT REFERENCES Plans (id) NOT NULL,
+    plan_id         BIGINT REFERENCES Plans (id) NOT NULL,
     price           NUMERIC(8, 2) CHECK (price > 0)
-);
-
-CREATE TABLE Payments
-(
-    timestamp TIMESTAMP,
-    sum       NUMERIC(8, 2) CHECK (sum > 0),
-    type      CHAR(8) CHECK (type IN ('buyout', 'feedback', 'fee')),
-    buyout_id BIGINT REFERENCES Buyouts (id)
 );
