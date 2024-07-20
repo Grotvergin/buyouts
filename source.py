@@ -16,14 +16,15 @@ from google.oauth2.service_account import Credentials
 from time import sleep
 from random import randint
 from os import remove
+from threading import Thread
+from requests import get, ConnectionError
 
+# Перевод ссылок в формат без http
 # Формат времени
 # Убрать qr код ссылку
 # Адрес сделать в момент заказа
-# Подтягивать цену с вб в момент покупки
 # Обновление qr кодов при доставке/с утра
 # Уведомление (обновите куар, появился новый выкуп)
-# Загрузка видео (верификация в обработке)
 # Инструкция в закрепленное сообщение
 # убрать ссылку в доступных выкупах
 # статус убрать
@@ -32,17 +33,19 @@ from os import remove
 # не запрещать выкупать, а просто не выдавать
 
 
-BOT = TeleBot(TOKEN)
+BOT = TeleBot(TOKEN_BOT)
+ADM = TeleBot(TOKEN_ADM)
 USER_STATES = {}
-STATES = ('sex',
-          'name',
-          'surname',
-          'phone',
-          'city',
-          'video',
-          'wallet')
+REG_STATES = ('sex',
+              'name',
+              'surname',
+              'phone',
+              'city',
+              'video',
+              'wallet')
 SEX_BTNS = ('М 🤵‍♂️', 'Ж 👱‍♀️')
 WALLET_BTNS = ('Да ✅', 'Нет 🚫')
+ADM_BTNS = ('🌀 Список неподтвержденных пользователей',)
 MENU_BTNS = ('Доступные 💭',
              'Избранные ✔️',
              'Заказанные 🛒',
@@ -56,6 +59,7 @@ MAX_LEN_NAME = 20
 MAX_LEN_SURNAME = 25
 AWARD_BUYOUT = 80
 AWARD_FEEDBACK = 50
+WB_WALLET_RATIO = 0.95
 STATUSES_AND_BTNS = {'🔴 Не распределён': ('Беру!', 'choose_'),
                      '🟠 В избранном': ('Заказал!', 'order_'),
                      '🟡 Выкуплен': ('Приехал!', 'arrive_'),
@@ -63,6 +67,97 @@ STATUSES_AND_BTNS = {'🔴 Не распределён': ('Беру!', 'choose_'
                      '🔵 Забран': ('Оценить!', 'feedback_')}
 STATUSES = tuple(STATUSES_AND_BTNS.keys())
 CALLBACKS = tuple([btn[1] for btn in STATUSES_AND_BTNS.values()])
+URL = 'https://card.wb.ru/cards/v2/detail'
+
+
+def GetPriceGood(barcode: int) -> int:
+    Stamp(f'Trying to get price for barcode: {barcode}', 'i')
+    raw = GetDataWhileNotCorrect(barcode, 3)
+    if raw:
+        Stamp(f'Got price for barcode: {barcode}', 's')
+        price = raw['data']['products'][0]['sizes'][0]['price']['total']
+        price = round((float(price) / 100 * WB_WALLET_RATIO))
+        return price
+    else:
+        Stamp(f'Failed to get price for barcode: {barcode}', 'e')
+        return 0
+
+
+def GetDataWhileNotCorrect(barcode: int, max_attempts: int) -> dict | None:
+    attempts = 0
+    while attempts < max_attempts:
+        raw_data = GetData(barcode)
+        if BarcodeIsValid(raw_data):
+            return raw_data
+        attempts += 1
+        Stamp(f'Attempt {attempts} failed, retrying', 'w')
+    Stamp(f'Exceeded maximum attempts ({max_attempts}) for barcode: {barcode}', 'e')
+    return
+
+
+def BarcodeIsValid(raw: dict) -> bool:
+    if 'data' in raw and 'products' in raw['data'] and raw['data']['products']:
+        if 'sizes' in raw['data']['products'][0] and raw['data']['products'][0]['sizes']:
+            if raw['data']['products'][0]['sizes'][0] and 'price' in raw['data']['products'][0]['sizes'][0]:
+                if raw['data']['products'][0]['sizes'][0]['price'] and 'total' in raw['data']['products'][0]['sizes'][0]['price']:
+                    if raw['data']['products'][0]['sizes'][0]['price']['total']:
+                        return True
+    return False
+
+
+def GetData(barcode: int) -> dict:
+    Stamp(f'Trying to connect {URL}', 'i')
+    HEADERS['Referer'] = f'https://www.wildberries.ru/catalog/{barcode}/detail.aspx'
+    PARAMS['nm'] = barcode
+    try:
+        response = get(URL, params=PARAMS, headers=HEADERS)
+    except ConnectionError:
+        Stamp(f'Connection on {URL}', 'e')
+        Sleep(LONG_SLEEP)
+        raw = GetData(barcode)
+    else:
+        if str(response.status_code)[0] == '2':
+            Stamp(f'Status = {response.status_code} on {URL}', 's')
+            if response.content:
+                raw = response.json()
+            else:
+                Stamp('Response is empty', 'w')
+                raw = {}
+        else:
+            Stamp(f'Status = {response.status_code} on {URL}', 'e')
+            Sleep(LONG_SLEEP)
+            raw = GetData(barcode)
+    return raw
+
+
+def AuthorizeDatabase():
+    conn = connect(
+        dbname=DB_NAME,
+        user=USER,
+        password=PASSWORD,
+        host=HOST,
+        port=PORT
+    )
+    cursor = conn.cursor()
+    return cursor, conn
+
+
+def RunBot(bot: TeleBot):
+    while True:
+        try:
+            bot.polling(none_stop=True, interval=1)
+        except Exception as e:
+            Stamp(f'{e}', 'e')
+            Stamp(format_exc(), 'e')
+
+
+def Main():
+    t1 = Thread(target=RunBot, args=(BOT,))
+    t2 = Thread(target=RunBot, args=(ADM,))
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
 
 
 def BuildService() -> Resource:
@@ -111,11 +206,11 @@ def ShowButtons(message: Message, buttons: tuple, answer: str) -> None:
     BOT.send_message(message.from_user.id, answer, reply_markup=markup, parse_mode='Markdown')
 
 
-def InlineButtons(message: Message, buttons: tuple, answer: str, clbk_data: str = None) -> None:
+def InlineButtons(user_id: int, buttons: list, answer: str, clbk_data: list) -> None:
     markup = InlineKeyboardMarkup()
-    for btn in buttons:
-        markup.add(InlineKeyboardButton(btn, callback_data=clbk_data + btn))
-    BOT.send_message(message.from_user.id, answer, reply_markup=markup, parse_mode='Markdown')
+    for btn, data in zip(buttons, clbk_data):
+        markup.add(InlineKeyboardButton(btn, callback_data=clbk_data))
+    BOT.send_message(user_id, answer, reply_markup=markup, parse_mode='Markdown')
 
 
 def Sleep(timer: int, ratio: float = 0.0) -> None:
