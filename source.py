@@ -13,24 +13,23 @@ from socket import gaierror
 from httplib2.error import ServerNotFoundError
 from googleapiclient.discovery import Resource, build
 from google.oauth2.service_account import Credentials
-from time import sleep
+from time import sleep, strptime, strftime
 from random import randint
 from os import remove
 from threading import Thread
 from requests import get, ConnectionError
 
-# Перевод ссылок в формат без http
-# Формат времени
-# Убрать qr код ссылку
+# товары одного бренда в течение получаса
+# один человек две недели одного бренда
 # Адрес сделать в момент заказа
 # Обновление qr кодов при доставке/с утра
 # Уведомление (обновите куар, появился новый выкуп)
-# Инструкция в закрепленное сообщение
-# убрать ссылку в доступных выкупах
-# статус убрать
 # вторая кнопка беру, в начале избранных ее нет
 # Наташа 100 метров от вас когда не активный юзер
 # не запрещать выкупать, а просто не выдавать
+# информация о пвз по id
+# предложение номера телефона и др
+# редактировать профиль возможность
 
 
 BOT = TeleBot(TOKEN_BOT)
@@ -40,7 +39,6 @@ REG_STATES = ('sex',
               'name',
               'surname',
               'phone',
-              'city',
               'video',
               'wallet')
 SEX_BTNS = ('М 🤵‍♂️', 'Ж 👱‍♀️')
@@ -68,6 +66,8 @@ STATUSES_AND_BTNS = {'🔴 Не распределён': ('Беру!', 'choose_'
 STATUSES = tuple(STATUSES_AND_BTNS.keys())
 CALLBACKS = tuple([btn[1] for btn in STATUSES_AND_BTNS.values()])
 URL = 'https://card.wb.ru/cards/v2/detail'
+DRIVE_PATTERN = 'https://drive.google.com/file/d/{}/view?usp=sharing'
+WB_PATTERN = 'https://www.wildberries.ru/catalog/{}/detail.aspx'
 
 
 def GetPriceGood(barcode: int) -> int:
@@ -192,25 +192,32 @@ def Stamp(message: str, level: str) -> None:
             print(Fore.WHITE + time_stamp + '[UNK] ' + message + '?' + Style.RESET_ALL)
 
 
-def ShowButtons(message: Message, buttons: tuple, answer: str) -> None:
+def ShowButtons(bot: TeleBot, message: Message, buttons: tuple, answer: str) -> None:
     markup = ReplyKeyboardMarkup(one_time_keyboard=True)
-    if len(buttons) % 2 == 0:
-        for i in range(0, len(buttons), 2):
-            row_buttons = buttons[i:i + 2]
-            markup.row(*[KeyboardButton(btn) for btn in row_buttons])
+    if len(buttons) % 3 == 0:
+        row_size = 3
+    elif len(buttons) % 2 == 0:
+        row_size = 2
     else:
-        for i in range(0, len(buttons) - 1, 2):
-            row_buttons = buttons[i:i + 2]
-            markup.row(*[KeyboardButton(btn) for btn in row_buttons])
-        markup.row(KeyboardButton(buttons[-1]))
-    BOT.send_message(message.from_user.id, answer, reply_markup=markup, parse_mode='Markdown')
+        row_size = 1
+    for i in range(0, len(buttons), row_size):
+        row_buttons = buttons[i:i + row_size]
+        markup.row(*[KeyboardButton(btn) for btn in row_buttons])
+    bot.send_message(message.from_user.id, answer, reply_markup=markup, parse_mode='Markdown')
 
 
-def InlineButtons(user_id: int, buttons: list, answer: str, clbk_data: list) -> None:
+def InlineButtons(bot: TeleBot, user_id: int, buttons: list, answer: str, clbk_data: list) -> None:
     markup = InlineKeyboardMarkup()
-    for btn, data in zip(buttons, clbk_data):
-        markup.add(InlineKeyboardButton(btn, callback_data=clbk_data))
-    BOT.send_message(user_id, answer, reply_markup=markup, parse_mode='Markdown')
+    if len(buttons) % 3 == 0:
+        row_size = 3
+    elif len(buttons) % 2 == 0:
+        row_size = 2
+    else:
+        row_size = 1
+    for i in range(0, len(buttons), row_size):
+        row_buttons = [InlineKeyboardButton(btn, callback_data=clbk_data[j]) for j, btn in enumerate(buttons[i:i + row_size], start=i)]
+        markup.row(*row_buttons)
+    bot.send_message(user_id, answer, reply_markup=markup, parse_mode='Markdown')
 
 
 def Sleep(timer: int, ratio: float = 0.0) -> None:

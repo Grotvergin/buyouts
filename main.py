@@ -5,7 +5,7 @@ from source import *
 def AcceptSex(message: Message) -> None:
     Stamp(f'User {message.from_user.id} choosing sex', 'i')
     if message.text not in SEX_BTNS:
-        ShowButtons(message, SEX_BTNS, '❌ Пожалуйста, введите один из предложенных вариантов:')
+        ShowButtons(BOT, message, SEX_BTNS, '❌ Пожалуйста, введите один из предложенных вариантов:')
         return
     sex = 'M' if message.text == SEX_BTNS[0] else 'F'
     CUR.execute("UPDATE users SET sex = %s WHERE id = %s", (sex, message.from_user.id))
@@ -18,7 +18,7 @@ def AcceptSex(message: Message) -> None:
 def AcceptName(message: Message) -> None:
     Stamp(f'User {message.from_user.id} entering name', 'i')
     name = message.text.strip()
-    if not match(r'^[А-Яа-яЁё-]+$', name) or len(name) > MAX_LEN_NAME:
+    if not match(r'^[А-Яа-яЁё-]+$', name) or len(name) > MAX_LEN_NAME or len(name) < 2:
         BOT.send_message(message.from_user.id, '❌ Пожалуйста, введите корректное имя:')
         return
     CUR.execute("UPDATE users SET name = %s WHERE id = %s", (name, message.from_user.id))
@@ -31,7 +31,7 @@ def AcceptName(message: Message) -> None:
 def AcceptSurname(message: Message) -> None:
     Stamp(f'User {message.from_user.id} entering surname', 'i')
     surname = message.text.strip()
-    if not match(r'^[А-Яа-яЁё-]+$', surname) or len(surname) > MAX_LEN_SURNAME:
+    if not match(r'^[А-Яа-яЁё-]+$', surname) or len(surname) > MAX_LEN_SURNAME or len(surname) < 2:
         BOT.send_message(message.from_user.id, '❌ Пожалуйста, введите корректную фамилию:')
         return
     CUR.execute("UPDATE users SET surname = %s WHERE id = %s", (surname, message.from_user.id))
@@ -48,23 +48,11 @@ def AcceptNumDigits(message: Message) -> None:
         return
     CUR.execute("UPDATE users SET phone = %s WHERE id = %s", (message.text.strip(), message.from_user.id))
     CON.commit()
-    CUR.execute("SELECT * FROM cities")
-    cities = [row[0] for row in CUR.fetchall()]
     USER_STATES[message.from_user.id] = REG_STATES[4]
-    InlineButtons(message.from_user.id, cities, '❔ Выберите ваш город:', [f'city_{city}' for city in cities])
+    BOT.send_message(message.from_user.id, '❔ Отправьте видео истории покупок:')
 
 
-@BOT.callback_query_handler(func=lambda call: call.data.startswith('city_'))
-def HandleCityCallback(call: CallbackQuery) -> None:
-    Stamp(f'User {call.from_user.id} choosing city', 'i')
-    city = call.data.split('_')[1]
-    CUR.execute("UPDATE users SET city = %s WHERE id = %s", (city, call.from_user.id))
-    CON.commit()
-    USER_STATES[call.from_user.id] = REG_STATES[5]
-    BOT.send_message(call.from_user.id, '❔ Отправьте видео истории покупок:')
-
-
-@BOT.message_handler(func=lambda message: USER_STATES.get(message.from_user.id) == REG_STATES[5], content_types=['video', 'document', 'text'])
+@BOT.message_handler(func=lambda message: USER_STATES.get(message.from_user.id) == REG_STATES[4], content_types=['video', 'document', 'text'])
 def HandleVideoLink(message: Message) -> None:
     Stamp(f'User {message.from_user.id} uploading video', 'i')
     video_file_info = None
@@ -84,28 +72,29 @@ def HandleVideoLink(message: Message) -> None:
         media = MediaFileUpload(path, mimetype='video/mp4')
         file = SERVICE.files().create(body={'name': path}, media_body=media, fields='id').execute()
         SERVICE.permissions().create(fileId=file.get('id'), body={'type': 'anyone', 'role': 'reader'}).execute()
-        video_link = f"https://drive.google.com/file/d/{file.get('id')}/view?usp=sharing"
-        CUR.execute("UPDATE users SET video_link = %s WHERE id = %s", (video_link, message.from_user.id))
+        CUR.execute("UPDATE users SET video_link = %s WHERE id = %s", (file.get('id'), message.from_user.id))
         CON.commit()
-        remove(path)
+        # remove(path)
     except Exception as e:
         BOT.send_message(message.from_user.id, f'❌ Произошла ошибка во время загрузки файла!')
         Stamp(f'Error while uploading a file: {str(e)}', 'e')
-    USER_STATES[message.from_user.id] = REG_STATES[6]
-    ShowButtons(message, WALLET_BTNS, '❔ У вас есть кошелек WB с привязанным номером?')
+    USER_STATES[message.from_user.id] = REG_STATES[5]
+    ShowButtons(BOT, message, WALLET_BTNS, '❔ У вас есть кошелек WB с привязанным номером?')
 
 
-@BOT.message_handler(func=lambda message: USER_STATES.get(message.from_user.id) == REG_STATES[6])
+@BOT.message_handler(func=lambda message: USER_STATES.get(message.from_user.id) == REG_STATES[5])
 def VerifyWallet(message: Message) -> None:
     Stamp(f'User {message.from_user.id} verifying wallet', 'i')
     if message.text not in WALLET_BTNS:
-        ShowButtons(message, WALLET_BTNS, '❌ Пожалуйста, введите один из предложенных вариантов:')
+        ShowButtons(BOT, message, WALLET_BTNS, '❌ Пожалуйста, введите один из предложенных вариантов:')
     elif message.text == WALLET_BTNS[0]:
         del USER_STATES[message.from_user.id]
         BOT.send_message(message.from_user.id, '✔️ Спасибо, ваши данные отправлены на проверку!')
-        ShowButtons(message, MENU_BTNS, '❔ Выберите действие:')
+        InlineButtons(ADM, ADM_ID, ['✅ Принять', '❌ Отклонить'], ShowUserInfo(message.from_user.id),
+                      [f'accept_{message.from_user.id}', f'reject_{message.from_user.id}'])
+        ShowButtons(BOT, message, MENU_BTNS, '❔ Выберите действие:')
     elif message.text == WALLET_BTNS[1]:
-        ShowButtons(message, WALLET_BTNS, '☢️ Привяжите кошелек!')
+        ShowButtons(BOT, message, WALLET_BTNS, '☢️ Привяжите кошелек!')
 
 
 def PrepareBuyouts(user_id: int = None) -> dict | None:
@@ -122,25 +111,25 @@ def PrepareBuyouts(user_id: int = None) -> dict | None:
         status = STATUSES[0]
         reward = AWARD_BUYOUT
         if buyout[0]:
-            text += f'📍 ID ПВЗ (в будущем – адрес): {buyout[0]}\n'
+            text += f'📍 ID ПВЗ: {buyout[0]}\n'
         if buyout[1]:
             status = STATUSES[1]
         if buyout[2]:
-            text += f'🕘 Планируемое время выкупа: {buyout[2]}\n'
+            text += f'🕘 Планируемое время выкупа: {FormatTime(buyout[2])}\n'
         if buyout[3]:
-            text += f'🏁 Фактическое время выкупа: {buyout[3]}\n'
+            text += f'🏁 Фактическое время выкупа: {FormatTime(buyout[3])}\n'
             status = STATUSES[2]
         if buyout[4]:
-            text += f'🚛 Доставлен на ПВЗ: {buyout[4]}\n'
+            text += f'🚛 Доставлен на ПВЗ: {FormatTime(buyout[4])}\n'
             status = STATUSES[3]
         if buyout[5]:
-            text += f'📤 Забран из ПВЗ: {buyout[5]}\n'
+            text += f'📤 Забран из ПВЗ: {FormatTime(buyout[5])}\n'
             status = STATUSES[4]
         if buyout[6]:
             text += f'📝 Отзыв: {buyout[6]}\n'
             reward += AWARD_FEEDBACK
         if buyout[7]:
-            text += f'🔗 Ссылка: {buyout[7]}\n'
+            text += f'🔗 Ссылка: {WB_PATTERN.format(buyout[7])}\n'
         if buyout[9]:
             text += f'📄 Запрос: {buyout[9]}\n'
         text += f'💰 Вознаграждение: {reward} ₽\n'
@@ -160,12 +149,20 @@ def SendBuyouts(user_id: int, status: str = None, all_statuses: bool = False) ->
             if buyouts[one][1] == status or all_statuses:
                 sent_at_least_one = True
                 btn_text, clbk_data = STATUSES_AND_BTNS[buyouts[one][1]]
-                InlineButtons(user_id, [btn_text], buyouts[one], [f'{clbk_data}{one}'])
+                InlineButtons(BOT, user_id, [btn_text], buyouts[one], [f'{clbk_data}{one}'])
     if not sent_at_least_one:
         if all_statuses:
             BOT.send_message(user_id, f'❌ Нет никаких выкупов!')
         else:
             BOT.send_message(user_id, f'❌ Нет выкупов со статусом {status}!')
+
+
+def FormatTime(time: str) -> str:
+    try:
+        date = strptime(time, "%Y-%m-%d %H:%M:%S.%f")
+    except (ValueError, TypeError):
+        return 'N/A'
+    return strftime("%d.%m.%Y %H:%M", date)
 
 
 def ShowUserInfo(user_id: int) -> str | None:
@@ -179,11 +176,11 @@ def ShowUserInfo(user_id: int) -> str | None:
            f'👤 Имя: {user[2]}\n' \
            f'👥 Фамилия: {user[3]}\n' \
            f'📞 Телефон: {user[4]}\n' \
-           f'🏙 Город: {user[5]}\n' \
-           f'📅 Дата подтверждения: {user[6]}\n' \
-           f'📹 Видео: {user[7]}\n' \
-           f'🆕 Дата обновления QR-кода: {user[7]}\n' \
-           f'🔳 QR-код: {user[8]}\n'
+           f'📅 Профиль подтверждён: {FormatTime(user[5])}\n' \
+           f'📹 Видео: {DRIVE_PATTERN.format(user[6])}\n' \
+           f'🆕 Дата обновления QR-кода: {FormatTime(user[7])}\n'
+    if user[8]:
+        text += f'🔳 QR-код: {DRIVE_PATTERN.format(user[8])}\n'
     return text
 
 
@@ -250,28 +247,32 @@ def HandleFeedbackCallback(call: CallbackQuery) -> None:
 
 def AcceptNewUser(message: Message) -> None:
     Stamp(f'User {message.from_user.id} registering at first', 'i')
-    CUR.execute("SELECT id FROM users WHERE id = %s", (message.from_user.id,))
-    if CUR.fetchone():
+    CUR.execute("SELECT COUNT(*) FROM users WHERE id = %s", (message.from_user.id,))
+    user_count = CUR.fetchone()[0]
+    if user_count == 1:
         BOT.send_message(message.from_user.id, '⚠️ Вы уже зарегистрированы!')
-    else:
+    elif user_count == 0:
         CUR.execute("INSERT INTO users (id) VALUES (%s)", (message.from_user.id,))
         CON.commit()
         USER_STATES[message.from_user.id] = REG_STATES[0]
-        BOT.send_message(message.from_user.id, '❔ Укажите ваш пол:')
+        ShowButtons(BOT, message, SEX_BTNS, '❔ Укажите ваш пол:')
+    else:
+        Stamp(f'User {message.from_user.id} registered multiple times', 'w')
+        ADM.send_message(ADM_ID, f'⚠️ Пользователь {message.from_user.id} зарегистрирован несколько раз!')
 
 
 def ShowUnconfirmedUsers() -> None:
     CUR.execute('SELECT id FROM users WHERE conf_time IS NULL')
     users = CUR.fetchall()
     if not users:
-        BOT.send_message(ADM_ID, '⚠️ Нет неподтвержденных пользователей!')
+        ADM.send_message(ADM_ID, '⚠️ Нет неподтвержденных пользователей!')
         return
     for user in users:
-        InlineButtons(ADM_ID,['✅ Принять', '❌ Отклонить'], ShowUserInfo(user[0]),
+        InlineButtons(ADM, ADM_ID,['✅ Принять', '❌ Отклонить'], ShowUserInfo(user[0]),
                       [f'accept_{user[0]}', f'reject_{user[0]}'])
 
 
-@BOT.callback_query_handler(func=lambda call: call.data.startswith('accept_'))
+@ADM.callback_query_handler(func=lambda call: call.data.startswith('accept_'))
 def HandleAcceptUser(call: CallbackQuery) -> None:
     user_id = call.data.split('_')[1]
     try:
@@ -285,7 +286,7 @@ def HandleAcceptUser(call: CallbackQuery) -> None:
         Stamp(f'Error while handling accept callback: {str(e)}', 'e')
 
 
-@BOT.callback_query_handler(func=lambda call: call.data.startswith('reject_'))
+@ADM.callback_query_handler(func=lambda call: call.data.startswith('reject_'))
 def HandleRejectUser(call: CallbackQuery) -> None:
     user_id = call.data.split('_')[1]
     try:
@@ -297,12 +298,16 @@ def HandleRejectUser(call: CallbackQuery) -> None:
         Stamp(f'Error while handling reject callback: {str(e)}', 'e')
 
 
-@BOT.message_handler(content_types=['text'])
+@BOT.message_handler(commands=['start'])
 def Start(message: Message) -> None:
+    Stamp(f'User {message.from_user.id} is starting', 'i')
+    AcceptNewUser(message)
+
+
+@BOT.message_handler(content_types=['text'])
+def MessageHandler(message: Message) -> None:
     Stamp(f'User {message.from_user.id} requested {message.text}', 'i')
-    if message.text == '/start':
-        AcceptNewUser(message)
-    elif message.text == MENU_BTNS[0]:
+    if message.text == MENU_BTNS[0]:
         SendBuyouts(message.from_user.id, STATUSES[0])
     elif message.text == MENU_BTNS[1]:
         SendBuyouts(message.from_user.id, STATUSES[1])
@@ -318,20 +323,19 @@ def Start(message: Message) -> None:
         BOT.send_message(message.from_user.id, ShowUserInfo(message.from_user.id))
     else:
         BOT.send_message(message.from_user.id, '❌ Неизвестная команда!')
-    ShowButtons(message, MENU_BTNS, '❔ Выберите действие:')
+    ShowButtons(BOT, message, MENU_BTNS, '❔ Выберите действие:')
 
 
 @ADM.message_handler(content_types=['text'])
-def Start(message: Message) -> None:
+def AdminHandler(message: Message) -> None:
     Stamp(f'Admin {message.from_user.id} requested {message.text}', 'i')
     if message.text == '/start':
         ADM.send_message(message.from_user.id, f'🥹 Здравствуйте, администратор {message.from_user.username}!'
-                                               'Сюда будут приходить уведомления о новых пользователях')
-        ShowButtons(message, ADM_BTNS, '❔ Выберите действие:')
+                                               ' Сюда будут приходить уведомления о новых пользователях...')
+        ShowButtons(ADM, message, ADM_BTNS, '❔ Выберите действие:')
     elif message.text == ADM_BTNS[0]:
-        SendBuyouts(message.from_user.id)
-    else:
-        ShowButtons(message, ADM_BTNS, '❌ Неизвестная команда!')
+        ShowUnconfirmedUsers()
+    ShowButtons(ADM, message, ADM_BTNS, '❔ Выберите действие:')
 
 
 if __name__ == '__main__':
