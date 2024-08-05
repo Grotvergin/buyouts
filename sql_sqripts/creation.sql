@@ -5,11 +5,14 @@ CREATE TABLE Users
     name       VARCHAR(20),
     surname    VARCHAR(25),
     phone      NUMERIC(11),
-    conf_time  TIMESTAMP CHECK (conf_time >= NOW() - INTERVAL '5 minutes'),
+    conf_time  TIMESTAMP,
     video_link VARCHAR(40),
-    qr_time    TIMESTAMP CHECK (qr_time >= NOW() - INTERVAL '5 minutes'),
+    qr_time    TIMESTAMP,
     qr_link    VARCHAR(40)
 );
+
+-- qr_time    TIMESTAMP CHECK (qr_time >= NOW() - INTERVAL '5 minutes')
+-- conf_time  TIMESTAMP CHECK (conf_time >= NOW() - INTERVAL '5 minutes')
 
 CREATE TABLE Plans
 (
