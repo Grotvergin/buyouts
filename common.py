@@ -7,7 +7,7 @@ from telebot.types import (Message, ReplyKeyboardMarkup,
                            KeyboardButton, InlineKeyboardMarkup,
                            InlineKeyboardButton)
 from random import randint
-from time import sleep, strptime, strftime
+from time import sleep
 from requests import get, ConnectionError
 from headers_agents import HEADERS, PARAMS
 from source import (LONG_SLEEP, URL, TIME_FORMAT,
@@ -55,7 +55,7 @@ def Stamp(message: str, level: str) -> None:
             print(Fore.WHITE + time_stamp + '[UNK] ' + message + '?' + Style.RESET_ALL)
 
 
-def ShowButtons(bot: TeleBot, message: Message, buttons: tuple, answer: str) -> None:
+def ShowButtons(bot: TeleBot, user_id: int, buttons: tuple, answer: str) -> None:
     markup = ReplyKeyboardMarkup(one_time_keyboard=True)
     if len(buttons) % 3 == 0:
         row_size = 3
@@ -66,7 +66,7 @@ def ShowButtons(bot: TeleBot, message: Message, buttons: tuple, answer: str) -> 
     for i in range(0, len(buttons), row_size):
         row_buttons = buttons[i:i + row_size]
         markup.row(*[KeyboardButton(btn) for btn in row_buttons])
-    bot.send_message(message.from_user.id, answer, reply_markup=markup, parse_mode='Markdown')
+    bot.send_message(user_id, answer, reply_markup=markup, parse_mode='Markdown')
 
 
 def InlineButtons(bot: TeleBot, user_id: int, buttons: list, answer: str, clbk_data: list) -> None:
@@ -150,7 +150,6 @@ def GetData(barcode: int) -> dict:
 
 
 def FormatTime(time: str) -> str:
-    print(time)
     try:
         date = datetime.strptime(str(time), "%Y-%m-%d %H:%M:%S.%f")
     except (ValueError, TypeError):
@@ -173,7 +172,7 @@ def UploadMedia(message: Message, file_info: dict, path: str, mimetype: str) -> 
         Stamp(f'Error while uploading a file: {str(e)}', 'e')
 
 
-def HandleMedia(message: Message, field: str, path: str, is_video: bool = True) -> None:
+def HandleMedia(message: Message, field: str, path: str, is_video: bool = True, table: str = 'users') -> None:
     media_file_info = None
     if is_video:
         if message.video:
@@ -194,6 +193,6 @@ def HandleMedia(message: Message, field: str, path: str, is_video: bool = True) 
     BOT.send_message(message.from_user.id, '🔄 Ваше медиа загружается, пожалуйста, подождите...')
     file_id = UploadMedia(message, media_file_info, path, 'video/mp4' if is_video else 'image/jpeg')
     with GetConCur(POOL) as (con, cur):
-        cur.execute(f"UPDATE users SET {field} = %s WHERE id = %s", (file_id, message.from_user.id))
+        cur.execute(f"UPDATE {table} SET {field} = %s WHERE id = %s", (file_id, message.from_user.id))
         con.commit()
     # remove(path)

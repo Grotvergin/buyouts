@@ -1,143 +1,123 @@
-from time import strftime, strptime
-from telebot.types import CallbackQuery
-from common import InlineButtons, Stamp, GetPriceGood
+from common import FormatTime, ShowButtons
+from telebot.types import Message
+from common import Stamp, GetPriceGood, HandleMedia
 from connect import GetConCur
-from source import (BOT, AWARD_BUYOUT,
-                    WB_PATTERN, CALLBACKS, STATUSES,
-                    STATUSES_AND_BTNS,
-                    AWARD_FEEDBACK, POOL)
+from source import (BOT, WALLET_BTNS,
+                    STATUS_BTNS,
+                    MENU_BTNS, BOUGHT_BTNS,
+                    POOL, TIME_BEFORE_BUYOUT,
+                    WB_PATTERN)
 
 
-def PrepareBuyouts(user_id: int = None) -> dict | None:
+def ShowAvailableBuyouts(message: Message) -> None:
     with GetConCur(POOL) as (con, cur):
-        if user_id:
-            cur.execute('SELECT * FROM fetch_buyouts_for_user(%s)', (user_id,))
+        cur.execute('SELECT * FROM available')
+        buyout = cur.fetchone()
+        if buyout:
+            already_taken_num = cur.execute("""
+                                        SELECT COUNT(*)
+                                        FROM buyouts
+                                        WHERE user_id = %s
+                                        AND fact_time IS NULL
+                                        """, (message.from_user.id,))
+            if already_taken_num:
+                BOT.send_message(message.from_user.id, '❌ Вы уже записаны на выкуп!')
+                ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
+                return
+            buyout_id, planned_time = buyout
+            message_text = f'🕘 Ближайший выкуп запланирован на: {FormatTime(planned_time)}\n' \
+                           f'Готовы взять?'
+            ShowButtons(BOT, message.from_user.id, WALLET_BTNS, message_text)
+            BOT.register_next_step_handler(message, TakeBuyout, buyout_id)
         else:
-            cur.execute('SELECT * FROM upcoming_buyouts')
-        buyouts = cur.fetchall()
-    if not buyouts:
+            BOT.send_message(message.from_user.id, '🫤 Нет доступных выкупов!')
+            ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
+
+
+def TakeBuyout(message: Message, buyout_id: int) -> None:
+    if message.text == WALLET_BTNS[0]:
+        try:
+            with GetConCur(POOL) as (con, cur):
+                cur.execute("UPDATE buyouts SET user_id = %s WHERE id = %s", (message.from_user.id, buyout_id))
+                con.commit()
+            BOT.send_message(message.from_user.id, '✅ Вы успешно записаны на выкуп!\n'
+                                                   f'За {TIME_BEFORE_BUYOUT} минут до выкупа я напомню вам!')
+        except Exception as e:
+            BOT.send_message(message.from_user.id, '❌ Произошла ошибка при записи на выкуп!')
+            Stamp(f'Error while taking buyout: {str(e)}', 'e')
+    else:
+        BOT.send_message(message.from_user.id, '❌ Вы отменили запись на выкуп!')
+        ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
+
+
+def AfterOrder(message: Message, buyout_id: int, nmid: int) -> None:
+    if message.text == BOUGHT_BTNS[0]:
+        # with GetConCur(POOL) as (con, cur):
+        #     cur.execute("UPDATE buyouts SET fact_time = NOW() WHERE id = %s", (buyout_id,))
+        BOT.send_message(message.from_user.id, 'Отправьте фото истории просмотров 💾')
+        BOT.register_next_step_handler(message, AcceptHistory)
+    else:
+        BOT.send_message(message.from_user.id, '❌ Отмена заказа!')
+        ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
+
+
+def AcceptHistory(message: Message) -> None:
+    Stamp(f'User {message.from_user.id} uploading history', 'i')
+    HandleMedia(message, 'photo_hist_link', f'{message.from_user.id}_history.jpg', False, 'buyouts')
+    BOT.send_message(message.from_user.id, 'Отправьте фото photo_good_link???')
+    BOT.register_next_step_handler(message, AcceptGood)
+
+
+def AcceptGood(message: Message) -> None:
+    Stamp(f'User {message.from_user.id} uploading good', 'i')
+    HandleMedia(message, 'photo_good_link', f'{message.from_user.id}_good.jpg', False, 'buyouts')
+    ShowButtons(BOT, message.from_user.id, MENU_BTNS, '🔄 Спасибо, выкуп отправлен на проверку!')
+
+
+def ShowMyBuyouts(message: Message) -> None:
+    if message.text == STATUS_BTNS[0]:
+        with GetConCur(POOL) as (con, cur):
+            cur.execute("SELECT pick_point_id, plan_time, delivery_time,"
+                        "feedback, price, good_link, request"
+                        "FROM buyouts JOIN plans on buyouts.plan_id = plans.id"
+                        "WHERE user_id = %s AND fact_time IS NULL", (message.from_user.id,))
+    elif message.text == STATUS_BTNS[1]:
+        with GetConCur(POOL) as (con, cur):
+            cur.execute("SELECT pick_point_id, plan_time, delivery_time,"
+                        "feedback, price, good_link, request"
+                        "FROM buyouts JOIN plans on buyouts.plan_id = plans.id"
+                        "WHERE user_id = %s AND fact_time IS NOT NULL"
+                        "AND delivery_time IS NULL", (message.from_user.id,))
+    elif message.text == STATUS_BTNS[2]:
+        with GetConCur(POOL) as (con, cur):
+            cur.execute("SELECT pick_point_id, plan_time, delivery_time,"
+                        "feedback, price, good_link, request"
+                        "FROM buyouts JOIN plans on buyouts.plan_id = plans.id"
+                        "WHERE user_id = %s AND delivery_time IS NOT NULL", (message.from_user.id,))
+    else:
+        BOT.send_message(message.from_user.id, '❌ Неизвестная команда...')
+        ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
         return
-    info = {}
+    buyouts = cur.fetchall()
+    if not buyouts:
+        BOT.send_message(message.from_user.id, '❌ Нет выкупов!')
+        ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
+        return
     for buyout in buyouts:
         text = ''
-        status = STATUSES[0]
-        reward = AWARD_BUYOUT
         if buyout[0]:
-            text += f'📍 ID ПВЗ: {buyout[0]}\n'
+            text += f'📍 ID ПВЗ (скоро адрес): {buyout[0]}\n'
         if buyout[1]:
-            status = STATUSES[1]
+            text += f'🕘 Планируемое время выкупа: {FormatTime(buyout[1])}\n'
         if buyout[2]:
-            text += f'🕘 Планируемое время выкупа: {FormatTime(buyout[2])}\n'
+            text += f'🕘 Планируемое время доставки: {FormatTime(buyout[2])}\n'
         if buyout[3]:
-            text += f'🏁 Фактическое время выкупа: {FormatTime(buyout[3])}\n'
-            status = STATUSES[2]
+            text += f'🧨 Отзыв : {FormatTime(buyout[3])}\n'
         if buyout[4]:
-            text += f'🚛 Доставлен на ПВЗ: {FormatTime(buyout[4])}\n'
-            status = STATUSES[3]
+            text += f'💰 Цена: {buyout[4]}\n'
         if buyout[5]:
-            text += f'📤 Забран из ПВЗ: {FormatTime(buyout[5])}\n'
-            status = STATUSES[4]
+            text += f'🔗 Ссылка на товар: {WB_PATTERN.format(buyout[5])}\n'
         if buyout[6]:
-            text += f'📝 Отзыв: {buyout[6]}\n'
-            reward += AWARD_FEEDBACK
-        if buyout[7]:
-            text += f'🔗 Ссылка: {WB_PATTERN.format(buyout[7])}\n'
-        if buyout[9]:
-            text += f'📄 Запрос: {buyout[9]}\n'
-        text += f'💰 Вознаграждение: {reward} ₽\n'
-        text += f'⚠️ Статус: {status}\n'
-        info[buyout[10]] = (text, status)
-    return info
-
-
-def SendBuyouts(user_id: int, status: str = None, all_statuses: bool = False) -> None:
-    sent_at_least_one = False
-    if status == STATUSES[0]:
-        buyouts = PrepareBuyouts()
-    else:
-        buyouts = PrepareBuyouts(user_id)
-    if buyouts:
-        for one in buyouts.keys():
-            if buyouts[one][1] == status or all_statuses:
-                sent_at_least_one = True
-                btn_text, clbk_data = STATUSES_AND_BTNS[buyouts[one][1]]
-                InlineButtons(BOT, user_id, [btn_text], buyouts[one], [f'{clbk_data}{one}'])
-    if not sent_at_least_one:
-        if all_statuses:
-            BOT.send_message(user_id, f'❌ Нет никаких выкупов!')
-        else:
-            BOT.send_message(user_id, f'❌ Нет выкупов со статусом {status}!')
-
-
-def FormatTime(time: str) -> str:
-    try:
-        date = strptime(time, "%Y-%m-%d %H:%M:%S.%f")
-    except (ValueError, TypeError):
-        return 'N/A'
-    return strftime("%d.%m.%Y %H:%M", date)
-
-
-@BOT.callback_query_handler(func=lambda call: call.data.startswith(CALLBACKS[0]))
-def HandleChooseCallback(call: CallbackQuery) -> None:
-    buyout_id = call.data.split('_')[1]
-    try:
-        with GetConCur(POOL) as (con, cur):
-            cur.execute("UPDATE buyouts SET user_id = %s WHERE id = %s", (call.from_user.id, buyout_id))
-            con.commit()
-        BOT.send_message(call.from_user.id, '✅ Вы успешно записаны на выкуп!')
-    except Exception as e:
-        BOT.send_message(call.from_user.id, '❌ Произошла ошибка при записи на выкуп!')
-        Stamp(f'Error while handling take callback: {str(e)}', 'e')
-
-
-@BOT.callback_query_handler(func=lambda call: call.data.startswith(CALLBACKS[1]))
-def HandleOrderedCallback(call: CallbackQuery) -> None:
-    buyout_id = call.data.split('_')[1]
-    try:
-        with GetConCur(POOL) as (con, cur):
-            cur.execute("SELECT good_link FROM plans AS p JOIN buyouts AS b ON p.id = b.plan_id WHERE b.id = %s", (buyout_id,))
-            good_link = cur.fetchone()[0]
-            cur.execute("UPDATE buyouts SET fact_time = NOW(), price = %s WHERE id = %s", (GetPriceGood(good_link), buyout_id))
-            con.commit()
-        BOT.send_message(call.from_user.id, '✅ Четко, вижу заказал!')
-    except Exception as e:
-        BOT.send_message(call.from_user.id, '❌ Произошла ошибка при обновлении статуса!')
-        Stamp(f'Error while handling ordered callback: {str(e)}', 'e')
-
-
-@BOT.callback_query_handler(func=lambda call: call.data.startswith(CALLBACKS[2]))
-def HandleArrivedCallback(call: CallbackQuery) -> None:
-    buyout_id = call.data.split('_')[1]
-    try:
-        with GetConCur(POOL) as (con, cur):
-            cur.execute("UPDATE buyouts SET delivery_time = NOW() WHERE id = %s", (buyout_id,))
-            con.commit()
-        BOT.send_message(call.from_user.id, '✅ Четко, вижу приехал!')
-    except Exception as e:
-        BOT.send_message(call.from_user.id, '❌ Произошла ошибка при обновлении статуса!')
-        Stamp(f'Error while handling arrived callback: {str(e)}', 'e')
-
-
-@BOT.callback_query_handler(func=lambda call: call.data.startswith(CALLBACKS[3]))
-def HandlePickedUpCallback(call: CallbackQuery) -> None:
-    buyout_id = call.data.split('_')[1]
-    try:
-        with GetConCur(POOL) as (con, cur):
-            cur.execute("UPDATE buyouts SET pick_up_time = NOW() WHERE id = %s", (buyout_id,))
-            con.commit()
-        BOT.send_message(call.from_user.id, '✅ Четко, вижу забрал!')
-    except Exception as e:
-        BOT.send_message(call.from_user.id, '❌ Произошла ошибка при обновлении статуса!')
-        Stamp(f'Error while handling picked up callback: {str(e)}', 'e')
-
-
-@BOT.callback_query_handler(func=lambda call: call.data.startswith(CALLBACKS[4]))
-def HandleFeedbackCallback(call: CallbackQuery) -> None:
-    buyout_id = call.data.split('_')[1]
-    try:
-        with GetConCur(POOL) as (con, cur):
-            con.commit()
-        BOT.send_message(call.from_user.id, '✅ Четко, вижу оценил!')
-    except Exception as e:
-        BOT.send_message(call.from_user.id, '❌ Произошла ошибка при обновлении статуса!')
-        Stamp(f'Error while handling feedback callback: {str(e)}', 'e')
+            text += f'📝 Запрос: {buyout[6]}\n'
+        BOT.send_message(message.from_user.id, text)
+    ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')

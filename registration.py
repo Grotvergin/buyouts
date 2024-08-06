@@ -3,7 +3,7 @@ from source import (BOT, ADM, ADM_ID, USER_STATES,
                     MAX_LEN_NAME, MAX_LEN_SURNAME,
                     MENU_BTNS, SEX_BTNS, POOL)
 from common import (ShowButtons, Stamp, InlineButtons,
-                    FormatTime, HandleMedia, UploadMedia)
+                    FormatTime, HandleMedia)
 from connect import GetConCur
 from telebot.types import Message
 from re import match
@@ -14,7 +14,7 @@ from source import DRIVE_PATTERN
 def AcceptSex(message: Message) -> None:
     Stamp(f'User {message.from_user.id} choosing sex', 'i')
     if message.text not in SEX_BTNS:
-        ShowButtons(BOT, message, SEX_BTNS, '❌ Пожалуйста, введите один из предложенных вариантов:')
+        ShowButtons(BOT, message.from_user.id, SEX_BTNS, '❌ Пожалуйста, введите один из предложенных вариантов:')
         return
     with GetConCur(POOL) as (con, cur):
         sex = 'M' if message.text == SEX_BTNS[0] else 'F'
@@ -70,22 +70,22 @@ def HandleVideoLink(message: Message) -> None:
     Stamp(f'User {message.from_user.id} uploading video', 'i')
     HandleMedia(message, 'video_link', f'{message.from_user.id}_wlc.mp4')
     USER_STATES[message.from_user.id] = REG_STATES[5]
-    ShowButtons(BOT, message, WALLET_BTNS, '❔ У вас есть кошелек WB с привязанным номером?')
+    ShowButtons(BOT, message.from_user.id, WALLET_BTNS, '❔ У вас есть кошелек WB с привязанным номером?')
 
 
 @BOT.message_handler(func=lambda message: USER_STATES.get(message.from_user.id) == REG_STATES[5])
 def VerifyWallet(message: Message) -> None:
     Stamp(f'User {message.from_user.id} verifying wallet', 'i')
     if message.text not in WALLET_BTNS:
-        ShowButtons(BOT, message, WALLET_BTNS, '❌ Пожалуйста, введите один из предложенных вариантов:')
+        ShowButtons(BOT, message.from_user.id, WALLET_BTNS, '❌ Пожалуйста, введите один из предложенных вариантов:')
     elif message.text == WALLET_BTNS[0]:
         del USER_STATES[message.from_user.id]
         BOT.send_message(message.from_user.id, '✔️ Спасибо, ваши данные отправлены на проверку!')
         InlineButtons(ADM, ADM_ID, ['✅ Принять', '❌ Отклонить'], ShowUserInfo(message.from_user.id),
                       [f'accept_{message.from_user.id}', f'reject_{message.from_user.id}'])
-        ShowButtons(BOT, message, MENU_BTNS, '❔ Выберите действие:')
+        ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
     elif message.text == WALLET_BTNS[1]:
-        ShowButtons(BOT, message, WALLET_BTNS, '☢️ Привяжите кошелек!')
+        ShowButtons(BOT, message.from_user.id, WALLET_BTNS, '☢️ Привяжите кошелек!')
 
 
 def ShowUserInfo(user_id: int) -> str | None:
@@ -119,7 +119,7 @@ def AcceptNewUser(message: Message) -> None:
             cur.execute("INSERT INTO users (id) VALUES (%s)", (message.from_user.id,))
             con.commit()
             USER_STATES[message.from_user.id] = REG_STATES[0]
-            ShowButtons(BOT, message, SEX_BTNS, '❔ Укажите ваш пол:')
+            ShowButtons(BOT, message.from_user.id, SEX_BTNS, '❔ Укажите ваш пол:')
         else:
             Stamp(f'User {message.from_user.id} registered multiple times', 'w')
             ADM.send_message(ADM_ID, f'⚠️ Пользователь {message.from_user.id} зарегистрирован несколько раз!')
