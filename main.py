@@ -1,11 +1,13 @@
-from common import ShowButtons, Stamp, InlineButtons, FormatTime, Sleep
+from common import (ShowButtons, Stamp, InlineButtons,
+                    FormatTime, Sleep, FormatCallback)
 from source import (BOT, ADM, MENU_BTNS, CANCEL_BTN, BOUGHT_BTNS,
-                    ADM_BTNS, POOL, ADM_ID, TIME_BEFORE_BUYOUT,
-                    PENDING_TIME, AWARD_BUYOUT, AWARD_FEEDBACK,
-                    STATUS_BTNS, WB_PATTERN)
+                    ADM_BTNS, POOL, ADM_ID, AWARD_BUYOUT, AWARD_FEEDBACK,
+                    STATUS_BTNS, WB_PATTERN, BOUGHT_CLBK, BOUGHT_TEXT, BOUGHT_TIME,
+                    ARRIVED_CLBK, ARRIVED_TEXT, YES_NO_BTNS, ARRIVED_TIME,
+                    FOUND_BTNS, FOUND_CLBK, FOUND_TEXT, FOUND_TIME)
 from telebot.types import Message, CallbackQuery
 from registration import AcceptNewUser, ShowUserInfo
-from management import ShowAvailableBuyouts, AfterOrder
+from management import ShowAvailableBuyouts
 from threading import Thread
 from telebot import TeleBot
 from traceback import format_exc
@@ -60,8 +62,8 @@ def ShowUnconfirmedUsers() -> None:
             ADM.send_message(ADM_ID, '⚠️ Нет неподтвержденных пользователей!')
             return
         for user in users:
-            InlineButtons(ADM, ADM_ID, ['✅ Принять', '❌ Отклонить'], ShowUserInfo(user[0]),
-                          [f'accept_{user[0]}', f'reject_{user[0]}'])
+            InlineButtons(ADM, ADM_ID, ('✅ Принять', '❌ Отклонить'), ShowUserInfo(user[0]),
+                          (f'accept_{user[0]}', f'reject_{user[0]}'))
 
 
 @BOT.message_handler(commands=['start'])
@@ -85,47 +87,52 @@ def MessageHandler(message: Message) -> None:
         ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
     elif message.text == MENU_BTNS[3]:
         ShowAvailableBuyouts(message)
-    elif message.text == BOUGHT_BTNS[0]:
-        # ShowButtons(BOT, 729516819, BOUGHT_BTNS, text)
-        BOT.register_next_step_handler(message, AfterOrder, 2, 123456789)
     else:
         BOT.send_message(message.from_user.id, '❌ Неизвестная команда...')
         ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
 
 
-def PendingBuyouts() -> None:
+def SendNotification(query: str, text: str, buttons: tuple, clbk_data: tuple, interval: int) -> None:
     while True:
         with GetConCur(POOL) as (con, cur):
-            cur.execute("""
-                        SELECT user_id, plan_time, pick_point_id, 
-                        feedback, good_link, request, buyouts.id
-                        FROM buyouts
-                        JOIN plans ON buyouts.plan_id = plans.id
-                        WHERE user_id IS NOT NULL
-                        AND fact_time IS NULL
-                        AND plan_time > NOW()
-                        """, (TIME_BEFORE_BUYOUT,))
-            buyouts = cur.fetchall()
-        if not buyouts:
-            return
-        for buyout in buyouts:
-            text = 'Пора выкупать (инструкция) ! 🛒\n'
+            cur.execute(query)
+        buyouts = cur.fetchall()
+        for one in buyouts:
             award = AWARD_BUYOUT
-            if buyout[1]:
-                text += f'🕘 Планируемое время выкупа: {FormatTime(buyout[1])}\n'
-            if buyout[2]:
-                text += f'📍 ID ПВЗ (скоро адрес): {buyout[2]}\n'
-            if buyout[3]:
-                text += f'🧨 Отзыв : {FormatTime(buyout[3])}\n'
+            if one[1]:
+                text += f'🕘 Планируемое время выкупа: {FormatTime(one[1])}\n'
+            if one[2]:
+                text += f'📍 ID ПВЗ (скоро адрес): {one[2]}\n'
+            if one[3]:
+                text += f'🧨 Отзыв : {one[3]}\n'
                 award += AWARD_FEEDBACK
-            if buyout[4]:
-                text += f'🔗 Ссылка на товар: {WB_PATTERN.format(buyout[4])}\n'
-            if buyout[5]:
-                text += f'📝 Запрос: {buyout[5]}\n'
+            if one[4]:
+                text += f'🔗 Ссылка на товар: {WB_PATTERN.format(one[4])}\n'
+            if one[5]:
+                text += f'📝 Запрос: {one[5]}\n'
             text += f'🎁 Вознаграждение: {award} руб.'
-            ShowButtons(BOT, buyout[0], BOUGHT_BTNS, text)
-            # BOT.register_next_step_handler(buyout[0], AfterOrder, buyout[6], buyout[4])
-        Sleep(PENDING_TIME)
+            InlineButtons(BOT, one[0], buttons, text, FormatCallback(clbk_data, one[6]))
+        Sleep(interval)
+
+
+@BOT.callback_query_handler()
+def ConfirmBuyout():
+    pass
+
+
+@BOT.callback_query_handler()
+def ConfirmArrival():
+    pass
+
+
+@BOT.callback_query_handler()
+def NewBuyout():
+    pass
+
+
+@ADM.callback_query_handler()
+def ValidateMedia():
+    pass
 
 
 def RunBot(bot: TeleBot):
@@ -138,15 +145,32 @@ def RunBot(bot: TeleBot):
 
 
 def Main():
-    t1 = Thread(target=RunBot, args=(BOT,))
-    t2 = Thread(target=RunBot, args=(ADM,))
-    t3 = Thread(target=PendingBuyouts)
-    t1.start()
-    t2.start()
-    t3.start()
-    t1.join()
-    t2.join()
-    t3.join()
+    notif_order = Thread(target=SendNotification,
+                         args=('SELECT * FROM notif_order',
+                               BOUGHT_TEXT,
+                               BOUGHT_BTNS,
+                               BOUGHT_CLBK,
+                               BOUGHT_TIME))
+    notif_arrive = Thread(target=SendNotification,
+                          args=('SELECT * FROM notif_arrive',
+                                ARRIVED_TEXT,
+                                YES_NO_BTNS,
+                                ARRIVED_CLBK,
+                                ARRIVED_TIME))
+    notif_found = Thread(target=SendNotification,
+                         args=('SELECT * FROM notif_found',
+                               FOUND_TEXT,
+                               FOUND_BTNS,
+                               FOUND_CLBK,
+                               FOUND_TIME))
+    threads = (Thread(target=RunBot, args=(BOT,)),
+               Thread(target=RunBot, args=(ADM,)),
+               notif_order,
+               notif_arrive,
+               notif_found)
+    for t in threads:
+        t.start()
+        t.join()
 
 
 if __name__ == '__main__':

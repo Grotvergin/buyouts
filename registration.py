@@ -1,9 +1,10 @@
 from source import (BOT, ADM, ADM_ID, USER_STATES,
-                    REG_STATES, WALLET_BTNS,
+                    REG_STATES, YES_NO_BTNS,
                     MAX_LEN_NAME, MAX_LEN_SURNAME,
-                    MENU_BTNS, SEX_BTNS, POOL)
+                    MENU_BTNS, SEX_BTNS, POOL, VALIDATE_BTNS,
+                    ACCEPT_CLBK)
 from common import (ShowButtons, Stamp, InlineButtons,
-                    FormatTime, HandleMedia)
+                    FormatTime, HandleVideo, FormatCallback)
 from connect import GetConCur
 from telebot.types import Message
 from re import match
@@ -18,7 +19,7 @@ def AcceptSex(message: Message) -> None:
         return
     with GetConCur(POOL) as (con, cur):
         sex = 'M' if message.text == SEX_BTNS[0] else 'F'
-        cur.execute("UPDATE users SET sex = %s WHERE id = %s", (sex, message.from_user.id))
+        cur.execute('UPDATE users SET sex = %s WHERE id = %s', (sex, message.from_user.id))
         con.commit()
     USER_STATES[message.from_user.id] = REG_STATES[1]
     BOT.send_message(message.from_user.id, '❔ Введите ваше имя:')
@@ -32,7 +33,7 @@ def AcceptName(message: Message) -> None:
         BOT.send_message(message.from_user.id, '❌ Пожалуйста, введите корректное имя:')
         return
     with GetConCur(POOL) as (con, cur):
-        cur.execute("UPDATE users SET name = %s WHERE id = %s", (name, message.from_user.id))
+        cur.execute('UPDATE users SET name = %s WHERE id = %s', (name, message.from_user.id))
         con.commit()
     USER_STATES[message.from_user.id] = REG_STATES[2]
     BOT.send_message(message.from_user.id, '❔ Введите вашу фамилию:')
@@ -46,7 +47,7 @@ def AcceptSurname(message: Message) -> None:
         BOT.send_message(message.from_user.id, '❌ Пожалуйста, введите корректную фамилию:')
         return
     with GetConCur(POOL) as (con, cur):
-        cur.execute("UPDATE users SET surname = %s WHERE id = %s", (surname, message.from_user.id))
+        cur.execute('UPDATE users SET surname = %s WHERE id = %s', (surname, message.from_user.id))
         con.commit()
     USER_STATES[message.from_user.id] = REG_STATES[3]
     BOT.send_message(message.from_user.id, '❔ Введите 11 цифр номера телефона без других знаков, например, 89151234567:')
@@ -59,7 +60,7 @@ def AcceptNumDigits(message: Message) -> None:
         BOT.send_message(message.from_user.id, '❌ Пожалуйста, введите номер телефона в корректном формате, например, 89151234567:')
         return
     with GetConCur(POOL) as (con, cur):
-        cur.execute("UPDATE users SET phone = %s WHERE id = %s", (message.text.strip(), message.from_user.id))
+        cur.execute('UPDATE users SET phone = %s WHERE id = %s', (message.text.strip(), message.from_user.id))
         con.commit()
     USER_STATES[message.from_user.id] = REG_STATES[4]
     BOT.send_message(message.from_user.id, '❔ Отправьте видео истории покупок:')
@@ -68,29 +69,30 @@ def AcceptNumDigits(message: Message) -> None:
 @BOT.message_handler(func=lambda message: USER_STATES.get(message.from_user.id) == REG_STATES[4], content_types=['video', 'document', 'text'])
 def HandleVideoLink(message: Message) -> None:
     Stamp(f'User {message.from_user.id} uploading video', 'i')
-    HandleMedia(message, 'video_link', f'{message.from_user.id}_wlc.mp4')
+    HandleVideo(message, 'users', 'video_link', 'wlc', message.from_user.id)
     USER_STATES[message.from_user.id] = REG_STATES[5]
-    ShowButtons(BOT, message.from_user.id, WALLET_BTNS, '❔ У вас есть кошелек WB с привязанным номером?')
+    ShowButtons(BOT, message.from_user.id, YES_NO_BTNS, '❔ У вас есть кошелек WB с привязанным номером?')
 
 
 @BOT.message_handler(func=lambda message: USER_STATES.get(message.from_user.id) == REG_STATES[5])
 def VerifyWallet(message: Message) -> None:
     Stamp(f'User {message.from_user.id} verifying wallet', 'i')
-    if message.text not in WALLET_BTNS:
-        ShowButtons(BOT, message.from_user.id, WALLET_BTNS, '❌ Пожалуйста, введите один из предложенных вариантов:')
-    elif message.text == WALLET_BTNS[0]:
+    if message.text not in YES_NO_BTNS:
+        ShowButtons(BOT, message.from_user.id, YES_NO_BTNS, '❌ Пожалуйста, введите один из предложенных вариантов:')
+    elif message.text == YES_NO_BTNS[0]:
         del USER_STATES[message.from_user.id]
         BOT.send_message(message.from_user.id, '✔️ Спасибо, ваши данные отправлены на проверку!')
-        InlineButtons(ADM, ADM_ID, ['✅ Принять', '❌ Отклонить'], ShowUserInfo(message.from_user.id),
-                      [f'accept_{message.from_user.id}', f'reject_{message.from_user.id}'])
+        InlineButtons(ADM, ADM_ID, VALIDATE_BTNS,
+                      ShowUserInfo(message.from_user.id),
+                      FormatCallback(ACCEPT_CLBK, message.from_user.id))
         ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
-    elif message.text == WALLET_BTNS[1]:
-        ShowButtons(BOT, message.from_user.id, WALLET_BTNS, '☢️ Привяжите кошелек!')
+    elif message.text == YES_NO_BTNS[1]:
+        ShowButtons(BOT, message.from_user.id, YES_NO_BTNS, '☢️ Привяжите кошелек!')
 
 
 def ShowUserInfo(user_id: int) -> str | None:
     with GetConCur(POOL) as (con, cur):
-        cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+        cur.execute('SELECT * FROM users WHERE id = %s', (user_id,))
         user = cur.fetchone()
     if not user:
         BOT.send_message(user_id, '❌ Вы не зарегистрированы в системе!')
@@ -111,12 +113,12 @@ def ShowUserInfo(user_id: int) -> str | None:
 def AcceptNewUser(message: Message) -> None:
     with GetConCur(POOL) as (con, cur):
         Stamp(f'User {message.from_user.id} registering at first', 'i')
-        cur.execute("SELECT COUNT(*) FROM users WHERE id = %s", (message.from_user.id,))
+        cur.execute('SELECT COUNT(*) FROM users WHERE id = %s', (message.from_user.id,))
         user_count = cur.fetchone()[0]
         if user_count == 1:
             BOT.send_message(message.from_user.id, '⚠️ Вы уже зарегистрированы!')
         elif user_count == 0:
-            cur.execute("INSERT INTO users (id) VALUES (%s)", (message.from_user.id,))
+            cur.execute('INSERT INTO users (id) VALUES (%s)', (message.from_user.id,))
             con.commit()
             USER_STATES[message.from_user.id] = REG_STATES[0]
             ShowButtons(BOT, message.from_user.id, SEX_BTNS, '❔ Укажите ваш пол:')

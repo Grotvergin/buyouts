@@ -11,13 +11,16 @@ from time import sleep
 from requests import get, ConnectionError
 from headers_agents import HEADERS, PARAMS
 from source import (LONG_SLEEP, URL, TIME_FORMAT,
-                    WB_WALLET_RATIO, BOT, POOL)
+                    WB_WALLET_RATIO, BOT, POOL,
+                    DIR_MEDIA, ADM, VALIDATE_BTNS, VALIDATE_CLBK)
 from googleapiclient.errors import HttpError
 from ssl import SSLEOFError
 from socket import gaierror
 from httplib2.error import ServerNotFoundError
 from googleapiclient.http import MediaFileUpload
 from connect import GetConCur
+from os.path import join
+from secret import ADM_ID
 
 
 def BuildService() -> Resource:
@@ -69,7 +72,7 @@ def ShowButtons(bot: TeleBot, user_id: int, buttons: tuple, answer: str) -> None
     bot.send_message(user_id, answer, reply_markup=markup, parse_mode='Markdown')
 
 
-def InlineButtons(bot: TeleBot, user_id: int, buttons: list, answer: str, clbk_data: list) -> None:
+def InlineButtons(bot: TeleBot, user_id: int, buttons: tuple, answer: str, clbk_data: tuple) -> None:
     markup = InlineKeyboardMarkup()
     if len(buttons) % 3 == 0:
         row_size = 3
@@ -157,12 +160,23 @@ def FormatTime(time: str) -> str:
     return date.strftime(TIME_FORMAT)
 
 
+def FormatCallback(clbk_data: tuple, user_id: int) -> tuple:
+    new_clbk_data = []
+    for one in clbk_data:
+        new_clbk_data.append(one.format(user_id))
+    return tuple(new_clbk_data)
+
+
 def UploadMedia(message: Message, file_info: dict, path: str, mimetype: str) -> str:
+    file = BOT.download_file(file_info.file_path)
+    with open(path, 'wb') as new_file:
+        new_file.write(file)
+    UploadToDrive(message, path, mimetype)
+
+
+def UploadToDrive(message: Message, path: str, mimetype: str) -> str:
     try:
         srv = BuildService()
-        file = BOT.download_file(file_info.file_path)
-        with open(path, 'wb') as new_file:
-            new_file.write(file)
         media = MediaFileUpload(path, mimetype=mimetype)
         file = srv.files().create(body={'name': path}, media_body=media, fields='id').execute()
         srv.permissions().create(fileId=file.get('id'), body={'type': 'anyone', 'role': 'reader'}).execute()
@@ -172,27 +186,60 @@ def UploadMedia(message: Message, file_info: dict, path: str, mimetype: str) -> 
         Stamp(f'Error while uploading a file: {str(e)}', 'e')
 
 
-def HandleMedia(message: Message, field: str, path: str, is_video: bool = True, table: str = 'users') -> None:
+def ExtractPhotoFromMessage(message: Message) -> dict | None:
     media_file_info = None
-    if is_video:
-        if message.video:
-            media_file_info = BOT.get_file(message.video.file_id)
-        elif message.document and message.document.mime_type.startswith('video/'):
-            media_file_info = BOT.get_file(message.document.file_id)
-        if not media_file_info:
-            BOT.send_message(message.from_user.id, '❌ Пожалуйста, отправьте видео:')
-            return
-    else:
-        if message.photo:
-            media_file_info = BOT.get_file(message.photo[-1].file_id)
-        elif message.document and message.document.mime_type.startswith('image/'):
-            media_file_info = BOT.get_file(message.document.file_id)
-        if not media_file_info:
-            BOT.send_message(message.from_user.id, '❌ Пожалуйста, отправьте фото:')
-            return
-    BOT.send_message(message.from_user.id, '🔄 Ваше медиа загружается, пожалуйста, подождите...')
-    file_id = UploadMedia(message, media_file_info, path, 'video/mp4' if is_video else 'image/jpeg')
-    with GetConCur(POOL) as (con, cur):
-        cur.execute(f"UPDATE {table} SET {field} = %s WHERE id = %s", (file_id, message.from_user.id))
+    if message.photo:
+        media_file_info = BOT.get_file(message.photo[-1].file_id)
+    elif message.document and message.document.mime_type.startswith('image/'):
+        media_file_info = BOT.get_file(message.document.file_id)
+    if not media_file_info:
+        BOT.send_message(message.from_user.id, '❌ Пожалуйста, отправьте фото:')
+        return
+    BOT.send_message(message.from_user.id, '🔄 Спасибо, ваше фото в обработке...')
+    return media_file_info
+
+
+def SendValidationRequest(media_link: str, table: str, field: str, entity_id: int, user_id: int) -> None:
+    InlineButtons(ADM, ADM_ID, VALIDATE_BTNS, 'Ознакомьтесь с медиа ❓\n'
+                                              f'🙆 Пользователь: {user_id}\n'
+                                              f'🔗 Ссылка: {media_link}\n'
+                                              f'🗓 Таблица: {table}\n'
+                                              f'🏷 Поле: {field}',
+                  VALIDATE_CLBK.format(table, field, entity_id, user_id))
+
+
+def ExtractVideoFromMessage(message: Message) -> dict | None:
+    media_file_info = None
+    if message.video:
+        media_file_info = BOT.get_file(message.video.file_id)
+    elif message.document and message.document.mime_type.startswith('video/'):
+        media_file_info = BOT.get_file(message.document.file_id)
+    if not media_file_info:
+        BOT.send_message(message.from_user.id, '❌ Пожалуйста, отправьте видео:')
+        return
+    BOT.send_message(message.from_user.id, '🔄 Спасибо, ваше видео в обработке...')
+    return media_file_info
+
+
+def HandlePhoto(message: Message, table: str, field: str, suffix: str, entity_id: int) -> None:
+    media_file_info = ExtractPhotoFromMessage(message)
+    if not media_file_info:
+        BOT.register_next_step_handler(message, HandlePhoto, table, field, suffix, entity_id)
+        return
+    file_id = UploadMedia(message, media_file_info, join(DIR_MEDIA, f'{message.from_user.id}_{suffix}.jpg'), 'image/jpeg')
+    SendValidationRequest(file_id, table, field, message.from_user.id, message.from_user.id)
+    with GetConCur(POOL)  as (con, cur):
+        cur.execute(f"UPDATE {table} SET {field} = %s WHERE id = %s", (file_id, entity_id))
         con.commit()
-    # remove(path)
+
+
+def HandleVideo(message: Message, table: str, field: str, suffix: str, entity_id: int) -> None:
+    media_file_info = ExtractVideoFromMessage(message)
+    if not media_file_info:
+        BOT.register_next_step_handler(message, HandleVideo, table, field, suffix, entity_id)
+        return
+    file_id = UploadMedia(message, media_file_info, join(DIR_MEDIA, f'{message.from_user.id}_{suffix}.jpg'), 'video/mp4')
+    SendValidationRequest(file_id, table, field, message.from_user.id, message.from_user.id)
+    with GetConCur(POOL)  as (con, cur):
+        cur.execute(f"UPDATE {table} SET {field} = %s WHERE id = %s", (file_id, entity_id))
+        con.commit()
