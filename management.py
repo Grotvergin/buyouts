@@ -1,9 +1,9 @@
 from common import FormatTime, ShowButtons
 from telebot.types import Message
-from common import Stamp, GetPriceGood, HandlePhoto
+from common import Stamp, HandlePhoto
 from connect import GetConCur
 from source import (BOT, STATUS_BTNS,
-                    MENU_BTNS, BOUGHT_BTNS,
+                    MENU_BTNS,
                     POOL, TIME_BEFORE_BUYOUT,
                     WB_PATTERN)
 
@@ -13,34 +13,28 @@ def ShowAvailableBuyouts(message: Message) -> None:
         cur.execute('SELECT * FROM available')
         buyout = cur.fetchone()
         if buyout:
-            already_taken_num = cur.execute("""SELECT COUNT(*)
-                                               FROM buyouts
-                                               WHERE user_id = %s
-                                               AND fact_time IS NULL""",
-                                            (message.from_user.id,))
-            if already_taken_num:
-                BOT.send_message(message.from_user.id, '❌ Вы уже записаны на выкуп!')
-                ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
-                return
-            buyout_id, planned_time = buyout
-            cur.execute('UPDATE buyouts SET user_id = %s WHERE id = %s', (message.from_user.id, buyout_id))
-            con.commit()
-            BOT.send_message(message.from_user.id, f'✅ Вы успешно записаны на выкуп, который состоится  {FormatTime(planned_time)}.\n'
-                                                   f'За {TIME_BEFORE_BUYOUT} минут до выкупа я пришлю подробную инструкцию!')
+            AssignBuyout(message.from_user.id, buyout[0], buyout[1])
         else:
             BOT.send_message(message.from_user.id, '🫤 Нет доступных выкупов!')
             ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
 
 
-def AfterOrder(message: Message, buyout_id: int, barcode: int) -> None:
-    if message.text == BOUGHT_BTNS[0]:
-        with GetConCur(POOL) as (con, cur):
-            cur.execute('UPDATE buyouts SET fact_time = NOW(), price = %s WHERE id = %s', (GetPriceGood(barcode), buyout_id))
-        BOT.send_message(message.from_user.id, 'Отправьте фото истории просмотров 💾')
-        BOT.register_next_step_handler(message, AcceptHistory, buyout_id)
-    else:
-        BOT.send_message(message.from_user.id, '❌ Отмена заказа!')
-        ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
+def AssignBuyout(user_id: int, buyout_id: int, planned_time: str) -> None:
+    Stamp(f'User {user_id} is assigning buyout {buyout_id}', 'i')
+    with GetConCur(POOL) as (con, cur):
+        already_taken_num = cur.execute("""SELECT COUNT(*)
+                                           FROM buyouts
+                                           WHERE user_id = %s
+                                           AND fact_time IS NULL""",
+                                        (user_id,))
+        if already_taken_num:
+            BOT.send_message(user_id, '❌ Вы уже записаны на выкуп!')
+            ShowButtons(BOT, user_id, MENU_BTNS, '❔ Выберите действие:')
+            return
+        cur.execute('UPDATE buyouts SET user_id = %s WHERE id = %s', (user_id, buyout_id))
+        con.commit()
+        BOT.send_message(user_id, f'✅ Вы успешно записаны на выкуп, который состоится  {FormatTime(planned_time)}.\n'
+                                               f'🕒 За {TIME_BEFORE_BUYOUT} минут до выкупа я пришлю подробную инструкцию!')
 
 
 def AcceptHistory(message: Message, buyout_id: int) -> None:
@@ -66,7 +60,7 @@ def ShowMyBuyouts(message: Message) -> None:
             cur.execute(base + 'AND fact_time IS NULL', (message.from_user.id,))
         elif message.text == STATUS_BTNS[1]:
             cur.execute(base +
-                        'AND fact_time IS NOT NULL' +
+                        'AND fact_time IS NOT NULL ' +
                         'AND delivery_time IS NULL', (message.from_user.id,))
         elif message.text == STATUS_BTNS[2]:
             cur.execute(base + 'AND delivery_time IS NOT NULL', (message.from_user.id,))
@@ -74,9 +68,9 @@ def ShowMyBuyouts(message: Message) -> None:
             BOT.send_message(message.from_user.id, '❌ Неизвестная команда...')
             ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
             return
-    buyouts = cur.fetchall()
+        buyouts = cur.fetchall()
     if not buyouts:
-        BOT.send_message(message.from_user.id, '❌ Таких выкупов нет!')
+        BOT.send_message(message.from_user.id, '💤 Таких выкупов нет...')
         ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
         return
     for buyout in buyouts:

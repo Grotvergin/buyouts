@@ -23,15 +23,17 @@ def RefreshQR(message: Message) -> None:
         BOT.register_next_step_handler(message, RefreshQR)
         return
     file_id = UploadToDrive(message, path, 'image/jpeg')
+    with GetConCur(POOL) as (con, cur):
+        cur.execute('UPDATE users SET qr_link = %s WHERE id = %s', (file_id, message.from_user.id))
+        con.commit()
     SendValidationRequest(file_id, 'users', 'qr_link', message.from_user.id, message.from_user.id)
     Stamp(f'User {message.from_user.id} has uploaded a new QR-code', 'i')
     ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
 
 
-# pip install opencv-python pyzbar
 def ExtractQRCode(message: Message, media_file_info: dict) -> None | str:
     file = BOT.download_file(media_file_info.file_path)
-    path = join(DIR_MEDIA, f'{message.from_user.id}_qr')
+    path = join(DIR_MEDIA, f'{message.from_user.id}_qr.jpg')
     with open(path, 'wb') as f:
         f.write(file)
     orig_img = imread(path)

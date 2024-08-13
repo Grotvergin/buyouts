@@ -1,3 +1,17 @@
+CREATE OR REPLACE FUNCTION update_qr_time()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.qr_link IS DISTINCT FROM OLD.qr_link THEN
+        UPDATE users SET qr_time = NOW() WHERE id = NEW.id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_qr_time
+AFTER UPDATE ON users
+FOR EACH ROW EXECUTE PROCEDURE update_qr_time();
+
 CREATE OR REPLACE FUNCTION add_buyouts_from_plan()
 RETURNS TRIGGER AS $$
 DECLARE

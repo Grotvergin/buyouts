@@ -4,7 +4,7 @@ from source import (BOT, ADM, ADM_ID, USER_STATES,
                     MENU_BTNS, SEX_BTNS, POOL, VALIDATE_BTNS,
                     ACCEPT_CLBK)
 from common import (ShowButtons, Stamp, InlineButtons,
-                    FormatTime, HandleVideo, FormatCallback)
+                    FormatTime, FormatCallback, HandleVideo)
 from connect import GetConCur
 from telebot.types import Message
 from re import match
@@ -84,19 +84,18 @@ def VerifyWallet(message: Message) -> None:
         BOT.send_message(message.from_user.id, '✔️ Спасибо, ваши данные отправлены на проверку!')
         InlineButtons(ADM, ADM_ID, VALIDATE_BTNS,
                       ShowUserInfo(message.from_user.id),
-                      FormatCallback(ACCEPT_CLBK, message.from_user.id))
+                      FormatCallback(ACCEPT_CLBK, (message.from_user.id,)))
         ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
     elif message.text == YES_NO_BTNS[1]:
         ShowButtons(BOT, message.from_user.id, YES_NO_BTNS, '☢️ Привяжите кошелек!')
 
 
-def ShowUserInfo(user_id: int) -> str | None:
+def ShowUserInfo(user_id: int) -> str:
     with GetConCur(POOL) as (con, cur):
         cur.execute('SELECT * FROM users WHERE id = %s', (user_id,))
         user = cur.fetchone()
     if not user:
-        BOT.send_message(user_id, '❌ Вы не зарегистрированы в системе!')
-        return
+        return '❌ Вы не зарегистрированы! Выполните команду /start'
     text = f'🆔 ID: {user[0]}\n' \
            f'🚹 Пол: {user[1]}\n' \
            f'👤 Имя: {user[2]}\n' \
@@ -104,7 +103,7 @@ def ShowUserInfo(user_id: int) -> str | None:
            f'📞 Телефон: {user[4]}\n' \
            f'📅 Профиль подтверждён: {FormatTime(user[5])}\n' \
            f'📹 Видео: {DRIVE_PATTERN.format(user[6])}\n' \
-           f'🆕 Дата обновления QR-кода: {FormatTime(user[7])}\n'
+           f'🆕 QR-код обновлён: {FormatTime(user[7])}\n'
     if user[8]:
         text += f'🔳 QR-код: {DRIVE_PATTERN.format(user[8])}\n'
     return text
@@ -112,11 +111,11 @@ def ShowUserInfo(user_id: int) -> str | None:
 
 def AcceptNewUser(message: Message) -> None:
     with GetConCur(POOL) as (con, cur):
-        Stamp(f'User {message.from_user.id} registering at first', 'i')
         cur.execute('SELECT COUNT(*) FROM users WHERE id = %s', (message.from_user.id,))
         user_count = cur.fetchone()[0]
         if user_count == 1:
             BOT.send_message(message.from_user.id, '⚠️ Вы уже зарегистрированы!')
+            ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
         elif user_count == 0:
             cur.execute('INSERT INTO users (id) VALUES (%s)', (message.from_user.id,))
             con.commit()

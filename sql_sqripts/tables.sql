@@ -31,7 +31,7 @@ CREATE TABLE Buyouts
     pick_point_id   BIGINT,
     user_id         BIGINT REFERENCES Users (id),
     plan_time       TIMESTAMP,
-    fact_time       TIMESTAMP CHECK (fact_time >= (plan_time - INTERVAL '20 minutes')),
+    fact_time       TIMESTAMP,
     delivery_time   TIMESTAMP CHECK (delivery_time > fact_time),
     pick_up_time    TIMESTAMP CHECK (pick_up_time > delivery_time),
     photo_hist_link VARCHAR(40),
@@ -40,3 +40,5 @@ CREATE TABLE Buyouts
     plan_id         BIGINT REFERENCES Plans (id) NOT NULL,
     price           NUMERIC(6) CHECK (price > 0)
 );
+
+-- CHECK (fact_time >= (plan_time - INTERVAL '20 minutes'))

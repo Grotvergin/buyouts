@@ -10,7 +10,7 @@ from random import randint
 from time import sleep
 from requests import get, ConnectionError
 from headers_agents import HEADERS, PARAMS
-from source import (LONG_SLEEP, URL, TIME_FORMAT,
+from source import (LONG_SLEEP, URL, TIME_FORMAT, DRIVE_PATTERN,
                     WB_WALLET_RATIO, BOT, POOL,
                     DIR_MEDIA, ADM, VALIDATE_BTNS, VALIDATE_CLBK)
 from googleapiclient.errors import HttpError
@@ -83,7 +83,7 @@ def InlineButtons(bot: TeleBot, user_id: int, buttons: tuple, answer: str, clbk_
     for i in range(0, len(buttons), row_size):
         row_buttons = [InlineKeyboardButton(btn, callback_data=clbk_data[j]) for j, btn in enumerate(buttons[i:i + row_size], start=i)]
         markup.row(*row_buttons)
-    bot.send_message(user_id, answer, reply_markup=markup, parse_mode='Markdown')
+    bot.send_message(user_id, answer, reply_markup=markup)
 
 
 def Sleep(timer: int, ratio: float = 0.0) -> None:
@@ -96,9 +96,9 @@ def GetPriceGood(barcode: int) -> int:
     Stamp(f'Trying to get price for barcode: {barcode}', 'i')
     raw = GetDataWhileNotCorrect(barcode, 3)
     if raw:
-        Stamp(f'Got price for barcode: {barcode}', 's')
         price = raw['data']['products'][0]['sizes'][0]['price']['total']
         price = round((float(price) / 100 * WB_WALLET_RATIO))
+        Stamp(f'Got price for barcode: {barcode} costs {price}', 's')
         return price
     else:
         Stamp(f'Failed to get price for barcode: {barcode}', 'e')
@@ -160,10 +160,10 @@ def FormatTime(time: str) -> str:
     return date.strftime(TIME_FORMAT)
 
 
-def FormatCallback(clbk_data: tuple, user_id: int) -> tuple:
+def FormatCallback(clbk_data: tuple, formatting_data: tuple | str) -> tuple:
     new_clbk_data = []
     for one in clbk_data:
-        new_clbk_data.append(one.format(user_id))
+        new_clbk_data.append(one.format(*formatting_data))
     return tuple(new_clbk_data)
 
 
@@ -171,7 +171,8 @@ def UploadMedia(message: Message, file_info: dict, path: str, mimetype: str) -> 
     file = BOT.download_file(file_info.file_path)
     with open(path, 'wb') as new_file:
         new_file.write(file)
-    UploadToDrive(message, path, mimetype)
+    file_id = UploadToDrive(message, path, mimetype)
+    return file_id
 
 
 def UploadToDrive(message: Message, path: str, mimetype: str) -> str:
@@ -202,10 +203,10 @@ def ExtractPhotoFromMessage(message: Message) -> dict | None:
 def SendValidationRequest(media_link: str, table: str, field: str, entity_id: int, user_id: int) -> None:
     InlineButtons(ADM, ADM_ID, VALIDATE_BTNS, 'Ознакомьтесь с медиа ❓\n'
                                               f'🙆 Пользователь: {user_id}\n'
-                                              f'🔗 Ссылка: {media_link}\n'
+                                              f'🔗 Ссылка: {DRIVE_PATTERN.format(media_link)}\n'
                                               f'🗓 Таблица: {table}\n'
                                               f'🏷 Поле: {field}',
-                  VALIDATE_CLBK.format(table, field, entity_id, user_id))
+                  FormatCallback(VALIDATE_CLBK, (table, field, entity_id)))
 
 
 def ExtractVideoFromMessage(message: Message) -> dict | None:
