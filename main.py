@@ -5,11 +5,11 @@ from source import (BOT, ADM, MENU_BTNS, CANCEL_BTN, BOUGHT_BTNS,
                     ADM_BTNS, POOL, ADM_ID, AWARD_BUYOUT, AWARD_FEEDBACK,
                     STATUS_BTNS, WB_PATTERN, BOUGHT_CLBK, BOUGHT_TEXT, BOUGHT_TIME,
                     ARRIVED_CLBK, ARRIVED_TEXT, YES_NO_BTNS, ARRIVED_TIME,
-                    FOUND_BTNS, FOUND_CLBK, FOUND_TEXT, FOUND_TIME)
+                    FOUND_BTNS, FOUND_CLBK, FOUND_TEXT, FOUND_TIME,
+                    QR_TEXT, QR_BTNS, QR_CLBK, QR_TIME)
 from telebot.types import Message, CallbackQuery
 from registration import AcceptNewUser, ShowUserInfo
-from management import (ShowAvailableBuyouts, AcceptHistory,
-                        AssignBuyout, ShowMyBuyouts)
+from management import ShowAvailableBuyouts, AcceptHistory, ShowMyBuyouts
 from threading import Thread
 from telebot import TeleBot
 from traceback import format_exc
@@ -120,6 +120,18 @@ def SendNotification(query: str, text_template: str, buttons: tuple, clbk_data: 
         Sleep(interval)
 
 
+def MassNotification(query: str, text_template: str, buttons: tuple, clbk_data: tuple, interval: int) -> None:
+    while True:
+        text = text_template
+        Stamp(f'Pending notifications for {text}', 'i')
+        with GetConCur(POOL) as (con, cur):
+            cur.execute(query)
+            users = cur.fetchall()
+        for one in users:
+            InlineButtons(BOT, one[0], buttons, text, clbk_data)
+        Sleep(interval)
+
+
 @BOT.callback_query_handler(func=lambda call: call.data.startswith('bou|'))
 def ConfirmBuyout(call: CallbackQuery) -> None:
     _, decision, buyout_id = call.data.split('|')
@@ -152,17 +164,20 @@ def ConfirmArrival(call: CallbackQuery) -> None:
 
         else:
             Stamp(f'User {call.from_user.id} rejected arrival of buyout {buyout_id}', 'i')
-            BOT.send_message(call.from_user.id, 'Увынск!')
+            BOT.send_message(call.from_user.id, 'Ждём подтверждения... 🕘')
             ShowButtons(BOT, call.from_user.id, MENU_BTNS, '❔ Выберите действие:')
 
 
-@BOT.callback_query_handler(func=lambda call: call.data.startswith('new|'))
+@BOT.callback_query_handler(func=lambda call: call.data.startswith('new'))
 def NewBuyout(call: CallbackQuery) -> None:
-    _, buyout_id = call.data.split('|')
-    with GetConCur(POOL) as (con, cur):
-        cur.execute('SELECT plan_time FROM buyouts WHERE id = %s', (buyout_id,))
-    planned_time = cur.fetchone()[0]
-    AssignBuyout(call.from_user.id, buyout_id, planned_time)
+    ShowAvailableBuyouts(call)
+
+
+@BOT.callback_query_handler(func=lambda call: call.data.startswith('qr'))
+def CallbackRefreshQR(call: CallbackQuery) -> None:
+    BOT.send_message(call.from_user.id, f'🔁 Последний раз QR-код был обновлён: {FindOutDateQR(call.from_user.id)}\n'
+                                       'Загрузите изображение с новым QR-кодом...')
+    BOT.register_next_step_handler(call.message, RefreshQR)
 
 
 @ADM.callback_query_handler(func=lambda call: call.data.startswith('val|'))
@@ -201,17 +216,24 @@ def Main():
                                 YES_NO_BTNS,
                                 ARRIVED_CLBK,
                                 ARRIVED_TIME))
-    notif_found = Thread(target=SendNotification,
-                         args=('SELECT * FROM notif_found',
+    notif_found = Thread(target=MassNotification,
+                         args=('SELECT * FROM users_without_active_buyouts',
                                FOUND_TEXT,
                                FOUND_BTNS,
                                FOUND_CLBK,
                                FOUND_TIME))
+    notif_qr = Thread(target=MassNotification,
+                      args=('SELECT * FROM users_with_old_qr',
+                            QR_TEXT,
+                            QR_BTNS,
+                            QR_CLBK,
+                            QR_TIME))
     threads = (Thread(target=RunBot, args=(BOT,)),
                Thread(target=RunBot, args=(ADM,)),
                notif_order,
-               notif_arrive,)
-               # notif_found)
+               notif_arrive,
+               notif_found,
+               notif_qr)
     for t in threads:
         t.start()
         Sleep(2)

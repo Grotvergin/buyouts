@@ -69,9 +69,10 @@ def AcceptNumDigits(message: Message) -> None:
 @BOT.message_handler(func=lambda message: USER_STATES.get(message.from_user.id) == REG_STATES[4], content_types=['video', 'document', 'text'])
 def HandleVideoLink(message: Message) -> None:
     Stamp(f'User {message.from_user.id} uploading video', 'i')
-    HandleVideo(message, 'users', 'video_link', 'wlc', message.from_user.id)
-    USER_STATES[message.from_user.id] = REG_STATES[5]
-    ShowButtons(BOT, message.from_user.id, YES_NO_BTNS, '❔ У вас есть кошелек WB с привязанным номером?')
+    video_handled = HandleVideo(message, 'users', 'video_link', 'wlc', message.from_user.id)
+    if video_handled:
+        USER_STATES[message.from_user.id] = REG_STATES[5]
+        ShowButtons(BOT, message.from_user.id, YES_NO_BTNS, '❔ У вас есть кошелек WB с привязанным номером?')
 
 
 @BOT.message_handler(func=lambda message: USER_STATES.get(message.from_user.id) == REG_STATES[5])

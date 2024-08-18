@@ -1,25 +1,23 @@
 from common import FormatTime, ShowButtons
-from telebot.types import Message
+from telebot.types import Message, CallbackQuery
 from common import Stamp, HandlePhoto
 from connect import GetConCur
-from source import (BOT, STATUS_BTNS,
-                    MENU_BTNS,
-                    POOL, TIME_BEFORE_BUYOUT,
-                    WB_PATTERN)
+from source import (BOT, STATUS_BTNS, MENU_BTNS,
+                    POOL, TIME_BEFORE_BUYOUT, WB_PATTERN)
 
 
-def ShowAvailableBuyouts(message: Message) -> None:
+def ShowAvailableBuyouts(message: Message | CallbackQuery) -> None:
     with GetConCur(POOL) as (con, cur):
         cur.execute('SELECT * FROM available')
         buyout = cur.fetchone()
         if buyout:
-            AssignBuyout(message.from_user.id, buyout[0], buyout[1])
+            AssignBuyout(message.from_user.id, buyout[0])
         else:
             BOT.send_message(message.from_user.id, '🫤 Нет доступных выкупов!')
             ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
 
 
-def AssignBuyout(user_id: int, buyout_id: int, planned_time: str) -> None:
+def AssignBuyout(user_id: int, buyout_id: int) -> None:
     Stamp(f'User {user_id} is assigning buyout {buyout_id}', 'i')
     with GetConCur(POOL) as (con, cur):
         already_taken_num = cur.execute("""SELECT COUNT(*)
@@ -31,6 +29,8 @@ def AssignBuyout(user_id: int, buyout_id: int, planned_time: str) -> None:
             BOT.send_message(user_id, '❌ Вы уже записаны на выкуп!')
             ShowButtons(BOT, user_id, MENU_BTNS, '❔ Выберите действие:')
             return
+        cur.execute('SELECT plan_time FROM buyouts WHERE id = %s', (buyout_id,))
+        planned_time = cur.fetchone()[0]
         cur.execute('UPDATE buyouts SET user_id = %s WHERE id = %s', (user_id, buyout_id))
         con.commit()
         BOT.send_message(user_id, f'✅ Вы успешно записаны на выкуп, который состоится  {FormatTime(planned_time)}.\n'

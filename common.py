@@ -11,7 +11,7 @@ from time import sleep
 from requests import get, ConnectionError
 from headers_agents import HEADERS, PARAMS
 from source import (LONG_SLEEP, URL, TIME_FORMAT, DRIVE_PATTERN,
-                    WB_WALLET_RATIO, BOT, POOL,
+                    WB_WALLET_RATIO, BOT, POOL, ADM_ID,
                     DIR_MEDIA, ADM, VALIDATE_BTNS, VALIDATE_CLBK)
 from googleapiclient.errors import HttpError
 from ssl import SSLEOFError
@@ -20,7 +20,6 @@ from httplib2.error import ServerNotFoundError
 from googleapiclient.http import MediaFileUpload
 from connect import GetConCur
 from os.path import join
-from secret import ADM_ID
 
 
 def BuildService() -> Resource:
@@ -216,31 +215,32 @@ def ExtractVideoFromMessage(message: Message) -> dict | None:
     elif message.document and message.document.mime_type.startswith('video/'):
         media_file_info = BOT.get_file(message.document.file_id)
     if not media_file_info:
-        BOT.send_message(message.from_user.id, '❌ Пожалуйста, отправьте видео:')
         return
     BOT.send_message(message.from_user.id, '🔄 Спасибо, ваше видео в обработке...')
     return media_file_info
 
 
-def HandlePhoto(message: Message, table: str, field: str, suffix: str, entity_id: int) -> None:
+def HandlePhoto(message: Message, table: str, field: str, suffix: str, entity_id: int) -> bool:
     media_file_info = ExtractPhotoFromMessage(message)
     if not media_file_info:
         BOT.register_next_step_handler(message, HandlePhoto, table, field, suffix, entity_id)
-        return
+        return False
     file_id = UploadMedia(message, media_file_info, join(DIR_MEDIA, f'{message.from_user.id}_{suffix}.jpg'), 'image/jpeg')
     SendValidationRequest(file_id, table, field, message.from_user.id, message.from_user.id)
-    with GetConCur(POOL)  as (con, cur):
+    with GetConCur(POOL) as (con, cur):
         cur.execute(f"UPDATE {table} SET {field} = %s WHERE id = %s", (file_id, entity_id))
         con.commit()
+    return True
 
 
-def HandleVideo(message: Message, table: str, field: str, suffix: str, entity_id: int) -> None:
+def HandleVideo(message: Message, table: str, field: str, suffix: str, entity_id: int) -> bool:
     media_file_info = ExtractVideoFromMessage(message)
     if not media_file_info:
-        BOT.register_next_step_handler(message, HandleVideo, table, field, suffix, entity_id)
-        return
+        BOT.send_message(message.from_user.id, '❌ Видео не распознано. Пожалуйста, попробуйте снова.')
+        return False
     file_id = UploadMedia(message, media_file_info, join(DIR_MEDIA, f'{message.from_user.id}_{suffix}.jpg'), 'video/mp4')
     SendValidationRequest(file_id, table, field, message.from_user.id, message.from_user.id)
-    with GetConCur(POOL)  as (con, cur):
+    with GetConCur(POOL) as (con, cur):
         cur.execute(f"UPDATE {table} SET {field} = %s WHERE id = %s", (file_id, entity_id))
         con.commit()
+    return True
