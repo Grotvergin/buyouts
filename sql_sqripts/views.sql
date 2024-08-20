@@ -21,7 +21,7 @@ SELECT user_id,
        plan_time,
        pick_point_id,
        feedback,
-       good_link,
+       good_id,
        request,
        buyouts.id
 FROM buyouts
@@ -35,7 +35,7 @@ SELECT user_id,
        plan_time,
        pick_point_id,
        feedback,
-       good_link,
+       good_id,
        request,
        buyouts.id
 FROM buyouts

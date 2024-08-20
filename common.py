@@ -1,6 +1,6 @@
 from googleapiclient.discovery import Resource, build
 from google.oauth2.service_account import Credentials
-from datetime import datetime
+from datetime import datetime, timedelta
 from colorama import Fore, Style
 from telebot import TeleBot
 from telebot.types import (Message, ReplyKeyboardMarkup,
@@ -153,10 +153,12 @@ def GetData(barcode: int) -> dict:
 
 def FormatTime(time: str) -> str:
     try:
-        date = datetime.strptime(str(time), "%Y-%m-%d %H:%M:%S.%f")
+        clean_time = str(time)[:-6]
+        date = datetime.strptime(clean_time, "%Y-%m-%d %H:%M:%S.%f")
+        date += timedelta(hours=6)
+        return date.strftime(TIME_FORMAT)
     except (ValueError, TypeError):
         return 'N/A'
-    return date.strftime(TIME_FORMAT)
 
 
 def FormatCallback(clbk_data: tuple, formatting_data: tuple | str) -> tuple:

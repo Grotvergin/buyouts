@@ -5,11 +5,11 @@ from source import (BOT, ADM, MENU_BTNS, CANCEL_BTN, BOUGHT_BTNS,
                     ADM_BTNS, POOL, ADM_ID, AWARD_BUYOUT, AWARD_FEEDBACK,
                     STATUS_BTNS, WB_PATTERN, BOUGHT_CLBK, BOUGHT_TEXT, BOUGHT_TIME,
                     ARRIVED_CLBK, ARRIVED_TEXT, YES_NO_BTNS, ARRIVED_TIME,
-                    FOUND_BTNS, FOUND_CLBK, FOUND_TEXT, FOUND_TIME,
-                    QR_TEXT, QR_BTNS, QR_CLBK, QR_TIME)
+                    FOUND_BTNS, FOUND_CLBK, FOUND_TEXT, FOUND_TIME, VALIDATE_BTNS,
+                    QR_TEXT, QR_BTNS, QR_CLBK, QR_TIME, ACCEPT_CLBK, VALIDATE_CLBK)
 from telebot.types import Message, CallbackQuery
 from registration import AcceptNewUser, ShowUserInfo
-from management import ShowAvailableBuyouts, AcceptHistory, ShowMyBuyouts
+from management import ShowAvailableBuyouts, AcceptHistory, ShowMyBuyouts, AcceptArrival
 from threading import Thread
 from telebot import TeleBot
 from traceback import format_exc
@@ -21,39 +21,32 @@ from connect import GetConCur
 def AdminHandler(message: Message) -> None:
     Stamp(f'Admin {message.from_user.id} requested {message.text}', 'i')
     if message.text == '/start':
-        ADM.send_message(message.from_user.id, f'🥹 Здравствуйте, администратор {message.from_user.username}!'
-                                               ' Сюда будут приходить уведомления о новых пользователях...')
+        ADM.send_message(message.from_user.id, f'🥹 Здравствуйте, администратор {message.from_user.username}!\n'
+                                               '✨ Сюда будут приходить уведомления о новых пользователях...')
         ShowButtons(ADM, message.from_user.id, ADM_BTNS, '❔ Выберите действие:')
     elif message.text == ADM_BTNS[0]:
         ShowUnconfirmedUsers()
     ShowButtons(ADM, message.from_user.id, ADM_BTNS, '❔ Выберите действие:')
 
 
-@ADM.callback_query_handler(func=lambda call: call.data.startswith('accept|'))
+@ADM.callback_query_handler(func=lambda call: call.data.startswith(ACCEPT_CLBK[0].split('|')[0]))
 def HandleAcceptUser(call: CallbackQuery) -> None:
-    user_id = call.data.split('|')[1]
+    _, decision, user_id = call.data.split('|')
     try:
-        with GetConCur(POOL) as (con, cur):
-            cur.execute("UPDATE users SET conf_time = NOW() WHERE id = %s", (user_id,))
-            con.commit()
+        if decision == 'pos':
+            with GetConCur(POOL) as (con, cur):
+                cur.execute("UPDATE users SET conf_time = NOW() WHERE id = %s", (user_id,))
+                con.commit()
             Stamp(f'User {user_id} accepted', 'i')
             BOT.send_message(user_id, '✅ Ваши данные подтверждены!')
             ADM.send_message(call.message.chat.id, f'✅ Пользователь {user_id} успешно принят!')
+        else:
+            Stamp(f'User {user_id} rejected', 'i')
+            BOT.send_message(user_id, '❌ Ваши данные отклонены!')
+            ADM.send_message(call.message.chat.id, f'❌ Пользователь {user_id} отклонен!')
     except Exception as e:
-        ADM.send_message(call.message.chat.id, '⚠️ Произошла ошибка при подтверждении пользователя!')
-        Stamp(f'Error while handling accept callback: {str(e)}', 'e')
-
-
-@ADM.callback_query_handler(func=lambda call: call.data.startswith('reject_'))
-def HandleRejectUser(call: CallbackQuery) -> None:
-    user_id = call.data.split('_')[1]
-    try:
-        Stamp(f'User {user_id} rejected', 'i')
-        BOT.send_message(user_id, '❌ Ваши данные отклонены!')
-        ADM.send_message(call.message.chat.id, f'❌ Пользователь {user_id} отклонен!')
-    except Exception as e:
-        ADM.send_message(call.message.chat.id, '⚠️ Произошла ошибка при отклонении пользователя!')
-        Stamp(f'Error while handling reject callback: {str(e)}', 'e')
+        ADM.send_message(call.message.chat.id, f'⚠️ Произошла ошибка при обработке пользователя {user_id} !')
+        Stamp(f'Error in user accepting {user_id} while handling callback: {str(e)}', 'e')
 
 
 def ShowUnconfirmedUsers() -> None:
@@ -64,8 +57,8 @@ def ShowUnconfirmedUsers() -> None:
             ADM.send_message(ADM_ID, '⚠️ Нет неподтвержденных пользователей!')
             return
         for user in users:
-            InlineButtons(ADM, ADM_ID, ('✅ Принять', '❌ Отклонить'), ShowUserInfo(user[0]),
-                          (f'accept_{user[0]}', f'reject_{user[0]}'))
+            InlineButtons(ADM, ADM_ID, VALIDATE_BTNS, ShowUserInfo(user[0]),
+                          FormatCallback(ACCEPT_CLBK, (user[0],)))
 
 
 @BOT.message_handler(commands=['start'])
@@ -80,7 +73,7 @@ def MessageHandler(message: Message) -> None:
     if message.text == MENU_BTNS[0]:
         ShowButtons(BOT, message.from_user.id, CANCEL_BTN, f'🔁 Последний раз QR-код был обновлён: '
                                                            f'{FindOutDateQR(message.from_user.id)}\n'
-                                                           f'Загрузите изображение с новым QR-кодом...')
+                                                           f'📸 Загрузите изображение с новым QR-кодом')
         BOT.register_next_step_handler(message, RefreshQR)
     elif message.text == MENU_BTNS[1]:
         ShowButtons(BOT, message.from_user.id, STATUS_BTNS, '❔ Выберите статус:')
@@ -132,17 +125,17 @@ def MassNotification(query: str, text_template: str, buttons: tuple, clbk_data: 
         Sleep(interval)
 
 
-@BOT.callback_query_handler(func=lambda call: call.data.startswith('bou|'))
+@BOT.callback_query_handler(func=lambda call: call.data.startswith(BOUGHT_CLBK[0].split('|')[0]))
 def ConfirmBuyout(call: CallbackQuery) -> None:
     _, decision, buyout_id = call.data.split('|')
     with GetConCur(POOL) as (con, cur):
         if decision == 'pos':
             Stamp(f'User {call.from_user.id} confirmed buyout {buyout_id}', 'i')
-            cur.execute('SELECT p.good_link FROM buyouts AS b JOIN plans AS p ON p.id = b.plan_id WHERE b.id = %s', (buyout_id,))
+            cur.execute('SELECT p.good_id FROM buyouts AS b JOIN plans AS p ON p.id = b.plan_id WHERE b.id = %s', (buyout_id,))
             barcode = cur.fetchone()[0]
             cur.execute('UPDATE buyouts SET fact_time = NOW(), price = %s WHERE id = %s', (GetPriceGood(barcode), buyout_id))
             con.commit()
-            message = BOT.send_message(call.from_user.id, 'Отправьте фото истории просмотров 💾')
+            message = BOT.send_message(call.from_user.id, '💾 Отправьте фото истории просмотров')
             BOT.register_next_step_handler(message, AcceptHistory, buyout_id)
         else:
             Stamp(f'User {call.from_user.id} rejected buyout {buyout_id}', 'i')
@@ -152,7 +145,7 @@ def ConfirmBuyout(call: CallbackQuery) -> None:
             ShowButtons(BOT, call.from_user.id, MENU_BTNS, '❔ Выберите действие:')
 
 
-@BOT.callback_query_handler(func=lambda call: call.data.startswith('arr|'))
+@BOT.callback_query_handler(func=lambda call: call.data.startswith(ARRIVED_CLBK[0].split('|')[0]))
 def ConfirmArrival(call: CallbackQuery) -> None:
     _, decision, buyout_id = call.data.split('|')
     with GetConCur(POOL) as (con, cur):
@@ -160,27 +153,28 @@ def ConfirmArrival(call: CallbackQuery) -> None:
             Stamp(f'User {call.from_user.id} confirmed arrival of buyout {buyout_id}', 'i')
             cur.execute('UPDATE buyouts SET delivery_time = NOW() WHERE id = %s', (buyout_id,))
             con.commit()
-            BOT.send_message(call.from_user.id, '✅ Спасибо за подтверждение! Нужно отправить фото????')
-
+            BOT.send_message(call.from_user.id, '📸 Отправьте фото экрана доставок')
+            BOT.register_next_step_handler(call.message, AcceptArrival, buyout_id)
         else:
             Stamp(f'User {call.from_user.id} rejected arrival of buyout {buyout_id}', 'i')
-            BOT.send_message(call.from_user.id, 'Ждём подтверждения... 🕘')
+            BOT.send_message(call.from_user.id, '🕘 Ждём подтверждения...')
             ShowButtons(BOT, call.from_user.id, MENU_BTNS, '❔ Выберите действие:')
 
 
-@BOT.callback_query_handler(func=lambda call: call.data.startswith('new'))
+@BOT.callback_query_handler(func=lambda call: call.data.startswith(FOUND_CLBK[0]))
 def NewBuyout(call: CallbackQuery) -> None:
     ShowAvailableBuyouts(call)
 
 
-@BOT.callback_query_handler(func=lambda call: call.data.startswith('qr'))
+@BOT.callback_query_handler(func=lambda call: call.data.startswith(QR_CLBK[0]))
 def CallbackRefreshQR(call: CallbackQuery) -> None:
-    BOT.send_message(call.from_user.id, f'🔁 Последний раз QR-код был обновлён: {FindOutDateQR(call.from_user.id)}\n'
-                                       'Загрузите изображение с новым QR-кодом...')
+    BOT.send_message(call.from_user.id, f'🔁 Последний раз QR-код был обновлён: '
+                                        f'{FindOutDateQR(call.from_user.id)}\n'
+                                       '📸 Загрузите изображение с новым QR-кодом')
     BOT.register_next_step_handler(call.message, RefreshQR)
 
 
-@ADM.callback_query_handler(func=lambda call: call.data.startswith('val|'))
+@ADM.callback_query_handler(func=lambda call: call.data.startswith(VALIDATE_CLBK[0].split('|')[0]))
 def ValidateMedia(call: CallbackQuery) -> None:
     _, decision, table, column, id = call.data.split('|')
     if decision == 'pos':

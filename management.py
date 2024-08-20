@@ -38,21 +38,27 @@ def AssignBuyout(user_id: int, buyout_id: int) -> None:
 
 
 def AcceptHistory(message: Message, buyout_id: int) -> None:
-    Stamp(f'User {message.from_user.id} uploading history', 'i')
+    Stamp(f'User {message.from_user.id} uploading history photo', 'i')
     HandlePhoto(message, 'buyouts', 'photo_hist_link', 'hist', buyout_id)
     BOT.send_message(message.from_user.id, '🖼 Отправьте фото заказанного товара')
     BOT.register_next_step_handler(message, AcceptGood, buyout_id)
 
 
 def AcceptGood(message: Message, buyout_id: int) -> None:
-    Stamp(f'User {message.from_user.id} uploading good', 'i')
+    Stamp(f'User {message.from_user.id} uploading good photo', 'i')
     HandlePhoto(message, 'buyouts', 'photo_good_link', 'good', buyout_id)
+    ShowButtons(BOT, message.from_user.id, MENU_BTNS, '🔄 Спасибо, выкуп отправлен на проверку!')
+
+
+def AcceptArrival(message: Message, buyout_id: int) -> None:
+    Stamp(f'User {message.from_user.id} uploading arrival photo', 'i')
+    HandlePhoto(message, 'buyouts', 'photo_arrival_link', 'arrival', buyout_id)
     ShowButtons(BOT, message.from_user.id, MENU_BTNS, '🔄 Спасибо, выкуп отправлен на проверку!')
 
 
 def ShowMyBuyouts(message: Message) -> None:
     base = """SELECT pick_point_id, plan_time, delivery_time,
-              feedback, price, good_link, request
+              feedback, price, good_id, request
               FROM buyouts JOIN plans on buyouts.plan_id = plans.id
               WHERE user_id = %s"""
     with GetConCur(POOL) as (con, cur):
