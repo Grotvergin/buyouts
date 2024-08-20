@@ -1,7 +1,7 @@
 from common import (ShowButtons, Stamp, InlineButtons,
                     FormatTime, Sleep, FormatCallback,
                     GetPriceGood)
-from source import (BOT, ADM, MENU_BTNS, CANCEL_BTN, BOUGHT_BTNS,
+from source import (BOT, ADM, MENU_BTNS, CANCEL_BTN, BOUGHT_BTNS, DRIVE_PATTERN,
                     ADM_BTNS, POOL, ADM_ID, AWARD_BUYOUT, AWARD_FEEDBACK,
                     STATUS_BTNS, WB_PATTERN, BOUGHT_CLBK, BOUGHT_TEXT, BOUGHT_TIME,
                     ARRIVED_CLBK, ARRIVED_TEXT, YES_NO_BTNS, ARRIVED_TIME,
@@ -176,15 +176,20 @@ def CallbackRefreshQR(call: CallbackQuery) -> None:
 
 @ADM.callback_query_handler(func=lambda call: call.data.startswith(VALIDATE_CLBK[0].split('|')[0]))
 def ValidateMedia(call: CallbackQuery) -> None:
-    _, decision, table, column, id = call.data.split('|')
+    _, decision, table, column, entity_id, user_id = call.data.split('|')
+    with GetConCur(POOL) as (con, cur):
+        cur.execute(f'SELECT {column} FROM {table} WHERE id = %s', (entity_id,))
+        media_link = cur.fetchone()[0]
     if decision == 'pos':
-        Stamp(f'Admin {call.from_user.id} accepted media {id}', 'i')
+        Stamp(f'Admin {call.from_user.id} accepted media {entity_id}', 'i')
         ADM.send_message(call.message.chat.id, '✅ Подтверждено!')
+        BOT.send_message(user_id, f'✅ Ваше изображение подтверждено: {DRIVE_PATTERN.format(media_link)}')
     else:
-        Stamp(f'Admin {call.from_user.id} rejected media {id}', 'i')
+        Stamp(f'Admin {call.from_user.id} rejected media {entity_id}', 'i')
         ADM.send_message(call.message.chat.id, '❌ Отклонено!')
+        BOT.send_message(user_id, f'❌ Ваше изображение отклонено: {DRIVE_PATTERN.format(media_link)}')
         with GetConCur(POOL) as (con, cur):
-            cur.execute(f'UPDATE {table} SET {column} = NULL WHERE id = %s', (id,))
+            cur.execute(f'UPDATE {table} SET {column} = NULL WHERE id = %s', (entity_id,))
             con.commit()
 
 

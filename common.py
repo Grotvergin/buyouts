@@ -207,7 +207,7 @@ def SendValidationRequest(media_link: str, table: str, field: str, entity_id: in
                                               f'🔗 Ссылка: {DRIVE_PATTERN.format(media_link)}\n'
                                               f'🗓 Таблица: {table}\n'
                                               f'🏷 Поле: {field}',
-                  FormatCallback(VALIDATE_CLBK, (table, field, entity_id)))
+                  FormatCallback(VALIDATE_CLBK, (table, field, entity_id, user_id)))
 
 
 def ExtractVideoFromMessage(message: Message) -> dict | None:
@@ -217,6 +217,7 @@ def ExtractVideoFromMessage(message: Message) -> dict | None:
     elif message.document and message.document.mime_type.startswith('video/'):
         media_file_info = BOT.get_file(message.document.file_id)
     if not media_file_info:
+        BOT.send_message(message.from_user.id, '❌ Пожалуйста, отправьте видео:')
         return
     BOT.send_message(message.from_user.id, '🔄 Спасибо, ваше видео в обработке...')
     return media_file_info

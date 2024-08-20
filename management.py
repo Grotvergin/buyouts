@@ -8,6 +8,11 @@ from source import (BOT, STATUS_BTNS, MENU_BTNS,
 
 def ShowAvailableBuyouts(message: Message | CallbackQuery) -> None:
     with GetConCur(POOL) as (con, cur):
+        cur.execute('SELECT conf_time FROM users WHERE id = %s', (message.from_user.id,))
+        conf_time = cur.fetchone()[0]
+        if not conf_time:
+            BOT.send_message(message.from_user.id, '🕦 Подождите, пока ваш профиль рассмотрят!')
+            return
         cur.execute('SELECT * FROM available')
         buyout = cur.fetchone()
         if buyout:
