@@ -10,9 +10,9 @@ from random import randint
 from time import sleep
 from requests import get, ConnectionError
 from headers_agents import HEADERS, PARAMS
-from source import (LONG_SLEEP, URL, TIME_FORMAT, DRIVE_PATTERN,
-                    WB_WALLET_RATIO, BOT, POOL, ADM_ID,
-                    DIR_MEDIA, ADM, VALIDATE_BTNS, VALIDATE_CLBK)
+from source import (LONG_SLEEP, URL_PRICE, TIME_FORMAT, DRIVE_PATTERN,
+                    WB_WALLET_RATIO, BOT, POOL, ADM_ID, URL_GET_COORD,
+                    DIR_MEDIA, ADM, VALIDATE_BTNS, VALIDATE_CLBK, URL_GET_ADDR)
 from googleapiclient.errors import HttpError
 from ssl import SSLEOFError
 from socket import gaierror
@@ -20,6 +20,7 @@ from httplib2.error import ServerNotFoundError
 from googleapiclient.http import MediaFileUpload
 from connect import GetConCur
 from os.path import join
+from secret import TOKEN_YANDEX
 
 
 def BuildService() -> Resource:
@@ -91,6 +92,15 @@ def Sleep(timer: int, ratio: float = 0.0) -> None:
     sleep(rand_time)
 
 
+def GetPositionByOffice(office_id: int) -> tuple | None:
+    Stamp(f'Trying to get position for office {office_id}', 'i')
+    coords = GetData(URL_GET_COORD, {'office_id': office_id})
+    raw_address = GetData(URL_GET_ADDR, {'apikey': TOKEN_YANDEX,
+                                                'geocode': f'{coords['longitude']},{coords['latitude']}',
+                                                'format': 'json'})
+    return raw_address['response']['GeoObjectCollection']['featureMember'][0]['GeoObject']['metaDataProperty']['GeocoderMetaData']['text']
+
+
 def GetPriceGood(barcode: int) -> int:
     Stamp(f'Trying to get price for barcode: {barcode}', 'i')
     raw = GetDataWhileNotCorrect(barcode, 3)
@@ -106,8 +116,10 @@ def GetPriceGood(barcode: int) -> int:
 
 def GetDataWhileNotCorrect(barcode: int, max_attempts: int) -> dict | None:
     attempts = 0
+    HEADERS['Referer'] = f'https://www.wildberries.ru/catalog/{barcode}/detail.aspx'
+    PARAMS['nm'] = barcode
     while attempts < max_attempts:
-        raw_data = GetData(barcode)
+        raw_data = GetData(URL_PRICE, PARAMS, HEADERS)
         if BarcodeIsValid(raw_data):
             return raw_data
         attempts += 1
@@ -126,28 +138,26 @@ def BarcodeIsValid(raw: dict) -> bool:
     return False
 
 
-def GetData(barcode: int) -> dict:
-    Stamp(f'Trying to connect {URL}', 'i')
-    HEADERS['Referer'] = f'https://www.wildberries.ru/catalog/{barcode}/detail.aspx'
-    PARAMS['nm'] = barcode
+def GetData(url: str, params: dict, headers: dict = None) -> dict:
+    Stamp(f'Trying to connect {url}', 'i')
     try:
-        response = get(URL, params=PARAMS, headers=HEADERS)
+        response = get(url, params=params, headers=headers)
     except ConnectionError:
-        Stamp(f'Connection on {URL}', 'e')
+        Stamp(f'Connection on {url}', 'e')
         Sleep(LONG_SLEEP)
-        raw = GetData(barcode)
+        raw = GetData(url, params, headers)
     else:
         if str(response.status_code)[0] == '2':
-            Stamp(f'Status = {response.status_code} on {URL}', 's')
+            Stamp(f'Status = {response.status_code} on {url}', 's')
             if response.content:
                 raw = response.json()
             else:
                 Stamp('Response is empty', 'w')
                 raw = {}
         else:
-            Stamp(f'Status = {response.status_code} on {URL}', 'e')
+            Stamp(f'Status = {response.status_code} on {url}', 'e')
             Sleep(LONG_SLEEP)
-            raw = GetData(barcode)
+            raw = GetData(url, params, headers)
     return raw
 
 

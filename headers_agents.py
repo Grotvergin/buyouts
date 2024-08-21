@@ -27,6 +27,7 @@ HEADERS = {
     'sec-ch-ua-mobile': '?0',
     'sec-ch-ua-platform': '"Windows"'
 }
+
 PARAMS = {
     'appType': '1',
     'curr': 'rub',

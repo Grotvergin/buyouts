@@ -1,6 +1,6 @@
 from common import (ShowButtons, Stamp, InlineButtons,
                     FormatTime, Sleep, FormatCallback,
-                    GetPriceGood)
+                    GetPriceGood, GetPositionByOffice)
 from source import (BOT, ADM, MENU_BTNS, CANCEL_BTN, BOUGHT_BTNS, DRIVE_PATTERN,
                     ADM_BTNS, POOL, ADM_ID, AWARD_BUYOUT, AWARD_FEEDBACK,
                     STATUS_BTNS, WB_PATTERN, BOUGHT_CLBK, BOUGHT_TEXT, BOUGHT_TIME,
@@ -100,7 +100,7 @@ def SendNotification(query: str, text_template: str, buttons: tuple, clbk_data: 
             if one[1]:
                 text += f'🕘 Планируемое время выкупа: {FormatTime(one[1])}\n'
             if one[2]:
-                text += f'📍 ID ПВЗ (скоро адрес): {one[2]}\n'
+                text += f'📍 Адрес ПВЗ: {GetPositionByOffice(one[2])}\n'
             if one[3]:
                 text += f'🧨 Отзыв: {one[3]}\n'
                 award += AWARD_FEEDBACK

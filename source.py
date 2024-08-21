@@ -4,7 +4,6 @@ from connect import CreateConnectionPool
 from telebot.types import BotCommand
 
 # ----- TODO LIST -----
-# Адрес сделать в момент заказа
 # Запрет на покупку одного бренда одним человеком на две недели
 # Предложение при регистрации автозаполнение
 # Редактировать профиль возможность
@@ -58,9 +57,11 @@ AWARD_FEEDBACK = 50
 WB_WALLET_RATIO = 0.95
 TIME_BEFORE_BUYOUT = 5
 PENDING_TIME = 60
-URL = 'https://card.wb.ru/cards/v2/detail'
+URL_PRICE = 'https://card.wb.ru/cards/v2/detail'
 DIR_MEDIA = 'media'
 DRIVE_PATTERN = 'https://drive.google.com/file/d/{}/view?usp=sharing'
 WB_PATTERN = 'https://www.wildberries.ru/catalog/{}/detail.aspx'
+URL_GET_COORD = 'https://pvz-map-backend.wildberries.ru/api/v1/office/location'
+URL_GET_ADDR = 'https://geocode-maps.yandex.ru/1.x'
 TIME_FORMAT = "%d.%m.%Y %H:%M"
 POOL = CreateConnectionPool()

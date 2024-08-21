@@ -1,6 +1,6 @@
 from common import FormatTime, ShowButtons
 from telebot.types import Message, CallbackQuery
-from common import Stamp, HandlePhoto
+from common import Stamp, HandlePhoto, GetPositionByOffice
 from connect import GetConCur
 from source import (BOT, STATUS_BTNS, MENU_BTNS,
                     POOL, TIME_BEFORE_BUYOUT, WB_PATTERN)
@@ -87,7 +87,7 @@ def ShowMyBuyouts(message: Message) -> None:
     for buyout in buyouts:
         text = ''
         if buyout[0]:
-            text += f'📍 ID ПВЗ (скоро адрес): {buyout[0]}\n'
+            text += f'📍 Адрес ПВЗ: {GetPositionByOffice(buyout[0])}\n'
         if buyout[1]:
             text += f'🕘 Планируемое время выкупа: {FormatTime(buyout[1])}\n'
         if buyout[2]:
