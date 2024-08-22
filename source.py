@@ -4,6 +4,7 @@ from connect import CreateConnectionPool
 from telebot.types import BotCommand
 
 # ----- TODO LIST -----
+# Отметка о подтверждении
 # Запрет на покупку одного бренда одним человеком на две недели
 # Предложение при регистрации автозаполнение
 # Редактировать профиль возможность
@@ -12,7 +13,7 @@ from telebot.types import BotCommand
 BOT = TeleBot(TOKEN_BOT)
 BOT.set_my_commands([BotCommand('/start', 'Начать регистрацию')])
 ADM = TeleBot(TOKEN_ADM)
-ADM_ID = MY_ID
+ADM_ID = PASHA_ID
 USER_STATES = {}
 REG_STATES = ('sex',
               'name',

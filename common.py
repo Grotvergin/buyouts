@@ -239,7 +239,7 @@ def HandlePhoto(message: Message, table: str, field: str, suffix: str, entity_id
         BOT.register_next_step_handler(message, HandlePhoto, table, field, suffix, entity_id)
         return False
     file_id = UploadMedia(message, media_file_info, join(DIR_MEDIA, f'{message.from_user.id}_{suffix}.jpg'), 'image/jpeg')
-    SendValidationRequest(file_id, table, field, message.from_user.id, message.from_user.id)
+    SendValidationRequest(file_id, table, field, entity_id, message.from_user.id)
     with GetConCur(POOL) as (con, cur):
         cur.execute(f"UPDATE {table} SET {field} = %s WHERE id = %s", (file_id, entity_id))
         con.commit()
@@ -252,7 +252,7 @@ def HandleVideo(message: Message, table: str, field: str, suffix: str, entity_id
         BOT.send_message(message.from_user.id, '❌ Видео не распознано. Пожалуйста, попробуйте снова.')
         return False
     file_id = UploadMedia(message, media_file_info, join(DIR_MEDIA, f'{message.from_user.id}_{suffix}.jpg'), 'video/mp4')
-    SendValidationRequest(file_id, table, field, message.from_user.id, message.from_user.id)
+    SendValidationRequest(file_id, table, field, entity_id, message.from_user.id)
     with GetConCur(POOL) as (con, cur):
         cur.execute(f"UPDATE {table} SET {field} = %s WHERE id = %s", (file_id, entity_id))
         con.commit()
