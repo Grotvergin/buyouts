@@ -50,5 +50,8 @@ def ExtractQRCode(message: Message, media_file_info: dict) -> None | str:
 def FindOutDateQR(user_id: int) -> str:
     with GetConCur(POOL) as (con, cur):
         cur.execute("SELECT qr_time FROM users WHERE id = %s", (user_id,))
-        qr_date = cur.fetchone()[0]
+        try:
+            qr_date = cur.fetchone()[0]
+        except TypeError:
+            return '❌ QR-код не загружен'
         return FormatTime(qr_date)

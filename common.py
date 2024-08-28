@@ -58,7 +58,7 @@ def Stamp(message: str, level: str) -> None:
             print(Fore.WHITE + time_stamp + '[UNK] ' + message + '?' + Style.RESET_ALL)
 
 
-def ShowButtons(bot: TeleBot, user_id: int, buttons: tuple, answer: str) -> None:
+def ShowButtons(bot: TeleBot, user_id: int, buttons: tuple, answer: str, request_contact: bool = None) -> None:
     markup = ReplyKeyboardMarkup(one_time_keyboard=True)
     if len(buttons) % 3 == 0:
         row_size = 3
@@ -68,7 +68,7 @@ def ShowButtons(bot: TeleBot, user_id: int, buttons: tuple, answer: str) -> None
         row_size = 1
     for i in range(0, len(buttons), row_size):
         row_buttons = buttons[i:i + row_size]
-        markup.row(*[KeyboardButton(btn) for btn in row_buttons])
+        markup.row(*[KeyboardButton(btn, request_contact=request_contact) for btn in row_buttons])
     bot.send_message(user_id, answer, reply_markup=markup, parse_mode='Markdown')
 
 

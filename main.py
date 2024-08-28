@@ -8,13 +8,14 @@ from source import (BOT, ADM, MENU_BTNS, CANCEL_BTN, BOUGHT_BTNS, DRIVE_PATTERN,
                     FOUND_BTNS, FOUND_CLBK, FOUND_TEXT, FOUND_TIME, VALIDATE_BTNS,
                     QR_TEXT, QR_BTNS, QR_CLBK, QR_TIME, ACCEPT_CLBK, VALIDATE_CLBK)
 from telebot.types import Message, CallbackQuery
-from registration import AcceptNewUser, ShowUserInfo
+from registration import ShowUserInfo
 from management import ShowAvailableBuyouts, AcceptHistory, ShowMyBuyouts, AcceptArrival
 from threading import Thread
 from telebot import TeleBot
 from traceback import format_exc
 from qr import RefreshQR, FindOutDateQR
 from connect import GetConCur
+from adm import SendQuestion
 
 
 @ADM.message_handler(content_types=['text'])
@@ -44,6 +45,7 @@ def HandleAcceptUser(call: CallbackQuery) -> None:
             Stamp(f'User {user_id} rejected', 'i')
             BOT.send_message(user_id, '❌ Ваши данные отклонены!')
             ADM.send_message(call.message.chat.id, f'❌ Пользователь {user_id} отклонен!')
+        ADM.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
     except Exception as e:
         ADM.send_message(call.message.chat.id, f'⚠️ Произошла ошибка при обработке пользователя {user_id} !')
         Stamp(f'Error in user accepting {user_id} while handling callback: {str(e)}', 'e')
@@ -59,12 +61,6 @@ def ShowUnconfirmedUsers() -> None:
         for user in users:
             InlineButtons(ADM, ADM_ID, VALIDATE_BTNS, ShowUserInfo(user[0]),
                           FormatCallback(ACCEPT_CLBK, (user[0],)))
-
-
-@BOT.message_handler(commands=['start'])
-def Start(message: Message) -> None:
-    Stamp(f'User {message.from_user.id} is trying to register', 'i')
-    AcceptNewUser(message)
 
 
 @BOT.message_handler(content_types=['text'])
@@ -83,6 +79,9 @@ def MessageHandler(message: Message) -> None:
         ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
     elif message.text == MENU_BTNS[3]:
         ShowAvailableBuyouts(message)
+    elif message.text == MENU_BTNS[4]:
+        ShowButtons(BOT, message.from_user.id, CANCEL_BTN, '📢 Напишите ваш вопрос, он будет передан администратору')
+        BOT.register_next_step_handler(message, SendQuestion)
     else:
         BOT.send_message(message.from_user.id, '❌ Неизвестная команда...')
         ShowButtons(BOT, message.from_user.id, MENU_BTNS, '❔ Выберите действие:')
@@ -191,6 +190,7 @@ def ValidateMedia(call: CallbackQuery) -> None:
         with GetConCur(POOL) as (con, cur):
             cur.execute(f'UPDATE {table} SET {column} = NULL WHERE id = %s', (entity_id,))
             con.commit()
+    ADM.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=None)
 
 
 def RunBot(bot: TeleBot):
